@@ -131,6 +131,50 @@ function isFridayAfternoon() {
   return now.getDay() === 5 && isAfternoonCutoff();
 }
 
+async function getPortfolioSummary() {
+  const db = getDb();
+  const today = getToday();
+
+  const holdings = getTodayHoldings();
+  const input = getPortfolioInput(today) || { cash: 0, new_investment: 0 };
+  const enriched = await enrichHoldingsWithPrices(holdings);
+  const assets = calcTotalAssets(enriched, input);
+
+  // 최근 AI 분석
+  const latestAnalysis = db.prepare(
+    "SELECT * FROM analysis WHERE date = ? ORDER BY created_at DESC LIMIT 1"
+  ).get(today);
+
+  // 각 종목에 마지막 AI 액션 붙이기
+  const holdingsWithAction = enriched.map(h => {
+    const lastAnalysis = db.prepare(
+      "SELECT action, reason FROM analysis WHERE date = ? AND stock_name LIKE ? ORDER BY created_at DESC LIMIT 1"
+    ).get(today, `%${h.stock_name}%`);
+    return {
+      ...h,
+      profitLoss: h.profit_loss,
+      profitRate: h.profit_loss_rate,
+      lastAction: lastAnalysis?.action || null,
+      lastReason: lastAnalysis?.reason?.slice(0, 40) || null
+    };
+  });
+
+  return {
+    holdings: holdingsWithAction,
+    stockValue: assets.stockValue,
+    cash: assets.cash,
+    newInvestment: assets.newInvestment,
+    totalAssets: assets.total,
+    overallProfitRate: enriched.length > 0
+      ? enriched.reduce((sum, h) => sum + (h.profit_loss || 0), 0) /
+        Math.max(1, enriched.reduce((sum, h) => sum + h.avg_price * h.quantity, 0)) * 100
+      : 0,
+    unrealizedPnL: enriched.reduce((sum, h) => sum + (h.profit_loss || 0), 0),
+    latestAnalysis,
+    nightIssue: null
+  };
+}
+
 module.exports = {
   getTodayHoldings,
   saveHoldings,
@@ -141,5 +185,6 @@ module.exports = {
   calcOpportunityCost,
   getMinutesUntilClose,
   isAfternoonCutoff,
-  isFridayAfternoon
+  isFridayAfternoon,
+  getPortfolioSummary
 };

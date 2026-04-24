@@ -143,8 +143,84 @@ async function runMondayCheck(enrichedHoldings, assets, news) {
   return callSonnet(prompt);
 }
 
+// runAnalysisPipeline: monitor.js / routes/portfolio.js에서 호출
+// portfolio.getPortfolioSummary() 결과를 받아 전체 분석 파이프라인 실행
+async function runAnalysisPipeline(portfolioSummary) {
+  const { getDb } = require('../db/database');
+  const { fetchAllRSS } = require('./rss');
+  const { getNaverNews } = require('./naver');
+  const { checkDart } = require('./dart');
+  const { sendUrgentAlert, sendApiLimitAlert } = require('./alert');
+  const { getSonnetRemainingToday } = require('./claude-sonnet');
+  const { canCallSonnet } = require('./guard');
+
+  if (getSonnetRemainingToday() <= 0) {
+    await sendApiLimitAlert();
+    return;
+  }
+
+  const db = getDb();
+  const today = new Date().toISOString().slice(0, 10);
+  const holdings = portfolioSummary.holdings || [];
+  if (holdings.length === 0) return;
+
+  // 뉴스 수집
+  let allNews = [];
+  try {
+    const rss = await fetchAllRSS();
+    allNews.push(...rss);
+  } catch (e) { console.warn('[Pipeline] RSS 실패:', e.message); }
+
+  try {
+    for (const h of holdings) {
+      if (h.stock_name) {
+        const naverNews = await getNaverNews(h.stock_name);
+        allNews.push(...naverNews);
+      }
+    }
+  } catch (e) { console.warn('[Pipeline] 네이버 뉴스 실패:', e.message); }
+
+  // DART 공시 체크
+  try {
+    for (const h of holdings) {
+      if (h.stock_code) await checkDart(h.stock_code, h.stock_name);
+    }
+  } catch (e) { console.warn('[Pipeline] DART 체크 실패:', e.message); }
+
+  const assets = {
+    stockValue: portfolioSummary.stockValue,
+    cash: portfolioSummary.cash,
+    newInvestment: portfolioSummary.newInvestment,
+    total: portfolioSummary.totalAssets
+  };
+
+  // watchlist 로드
+  const watchlist = db.prepare('SELECT * FROM watchlist WHERE date = ? ORDER BY rowid LIMIT 10').all(today);
+
+  const result = await analyzePortfolio(holdings, assets, allNews, watchlist);
+
+  if (result.triggered && result.analysis) {
+    const a = result.analysis;
+    for (const h of holdings) {
+      await sendUrgentAlert(h, a, result.relevantNews || []);
+    }
+    // DB 저장
+    db.prepare(
+      `INSERT INTO analysis (date, stock_name, action, confidence, reason, data_used, alternative_stock, target_price, stop_loss, urgency, cash_recommendation)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      today,
+      holdings.map(h => h.stock_name).join(','),
+      a.action, a.confidence, a.reason,
+      JSON.stringify(a.data_used || []),
+      a.alternative_stock, a.target_price, a.stop_loss, a.urgency, a.cash_recommendation
+    );
+  }
+}
+
 module.exports = {
   analyzePortfolio,
+  runAnalysisPipeline,
   runMorningReport,
   runClosingReport,
   runFridayCheck,

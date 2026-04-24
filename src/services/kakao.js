@@ -62,9 +62,26 @@ async function ensureToken() {
   }
 }
 
-function checkRefreshTokenExpiry() {
-  // Refresh Token 만료 체크 (60일 기준, 7일 전 알림)
-  // 실제 구현 시 저장된 만료 시간과 비교
+// Refresh Token 발급일 저장 (최초 토큰 설정 시 또는 갱신 시 업데이트)
+let refreshTokenIssuedAt = Date.now();
+
+function setRefreshTokenIssuedAt(ts) {
+  refreshTokenIssuedAt = ts || Date.now();
+}
+
+async function checkRefreshTokenExpiry() {
+  const REFRESH_TOKEN_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60일
+  const WARN_BEFORE_MS = 7 * 24 * 60 * 60 * 1000;        // 7일 전 알림
+  const elapsed = Date.now() - refreshTokenIssuedAt;
+  const remaining = REFRESH_TOKEN_TTL_MS - elapsed;
+
+  if (remaining <= WARN_BEFORE_MS && remaining > 0) {
+    const daysLeft = Math.ceil(remaining / (24 * 60 * 60 * 1000));
+    await sendMessage(
+      `⚠️ 카카오 Refresh Token 만료 ${daysLeft}일 전입니다.\n토큰을 갱신하지 않으면 카카오톡 알림이 중단됩니다.\nREADME 5번 항목 참고하여 재발급 해주세요.`,
+      '', 'refresh_token_warning'
+    );
+  }
 }
 
 async function sendMessage(message, stockName = '', alertType = 'info') {
@@ -112,4 +129,15 @@ setInterval(async () => {
   await refreshAccessToken();
 }, 6 * 60 * 60 * 1000);
 
-module.exports = { sendMessage, getTodayCount, MAX_PER_DAY };
+// 매일 오전 7시 Refresh Token 만료 체크 (node-cron은 index.js에서 등록)
+// sendKakao: sendMessage의 alias (스케줄러에서 사용)
+const sendKakao = sendMessage;
+
+module.exports = {
+  sendMessage,
+  sendKakao,
+  getTodayCount,
+  MAX_PER_DAY,
+  checkRefreshTokenExpiry,
+  setRefreshTokenIssuedAt
+};

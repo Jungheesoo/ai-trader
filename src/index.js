@@ -10,6 +10,7 @@ const portfolioRoute = require('./routes/portfolio');
 const chatRoute = require('./routes/chat');
 const historyRoute = require('./routes/history');
 
+const { checkRefreshTokenExpiry } = require('./services/kakao');
 const { runMorningLink } = require('./scheduler/morning');
 const { runScan } = require('./scheduler/scan');
 const { runMorningReport } = require('./scheduler/report');
@@ -87,6 +88,11 @@ cron.schedule('0 2 * * *', async () => {
 // 일요일 오전 10:00 - 주간 성과 리포트
 cron.schedule('0 10 * * 0', async () => {
   await runWeeklyReport();
+}, { timezone: 'Asia/Seoul' });
+
+// 매일 오전 7:00 - 카카오 Refresh Token 만료 7일 전 알림
+cron.schedule('0 7 * * *', async () => {
+  await checkRefreshTokenExpiry();
 }, { timezone: 'Asia/Seoul' });
 
 // ─── 서버 시작 ───────────────────────────────────────────

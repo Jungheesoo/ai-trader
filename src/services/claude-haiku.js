@@ -56,13 +56,24 @@ async function filterNews(newsText, holdings) {
   }
 }
 
+// 반환: [{...newsFields, relevant, urgency, impact, reason}, ...]
 async function filterNewsBatch(newsList, holdings) {
   const results = [];
   for (const news of newsList) {
     const text = news.content || news.summary || news.title || '';
     const source = news.content ? '본문' : '요약본';
     const result = await filterNews(`[${source}]\n${text}`, holdings);
-    results.push({ news, result });
+    // flat 구조로 반환 (news 필드 + haiku 판단 필드)
+    results.push({
+      ...news,
+      relevant: result?.relevant ?? false,
+      urgency: result?.urgency ?? '정보',
+      impact: result?.impact ?? '중립',
+      reason: result?.reason ?? '',
+      // 하위 호환용
+      news,
+      result
+    });
   }
   return results;
 }
