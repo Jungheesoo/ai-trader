@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>분석 이력 - AI 트레이더</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div style="font-size:16px;font-weight:600;">📊 분석 이력</div>
+    <div class="subtitle">AI 추천 이력 및 성과</div>
+  </div>
+</div>
+
+<div class="stat-grid" style="margin-top:12px">
+  <div class="stat-item">
+    <div class="stat-value positive" id="accuracy-rate">-</div>
+    <div class="stat-label">AI 적중률</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value" id="seed-growth">-</div>
+    <div class="stat-label">시드 성장</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value" id="sell-count">-</div>
+    <div class="stat-label">익절 횟수</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">시드 성장 이력</div>
+  <div id="seed-chart">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">AI 추천 이력</div>
+  <div id="history-list">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<nav class="nav-bottom">
+  <a href="/"><span class="icon">🏠</span>홈</a>
+  <a href="/portfolio.html"><span class="icon">💼</span>자산입력</a>
+  <a href="/chat.html"><span class="icon">🤖</span>AI질문</a>
+  <a href="/history.html" class="active"><span class="icon">📊</span>이력</a>
+</nav>
+
+<script>
+async function loadPerformance() {
+  try {
+    const res = await fetch('/api/history/performance?period=30');
+    const json = await res.json();
+    if (!json.ok) return;
+    const d = json.data;
+
+    if (d.accuracy_rate !== null) {
+      document.getElementById('accuracy-rate').textContent = d.accuracy_rate + '%';
+    }
+
+    if (d.seed_growth && d.seed_growth.length >= 2) {
+      const first = d.seed_growth[0];
+      const last = d.seed_growth[d.seed_growth.length - 1];
+      const rate = first.total_assets > 0
+        ? (((last.total_assets - first.total_assets) / first.total_assets) * 100).toFixed(1)
+        : 0;
+      const sign = rate >= 0 ? '+' : '';
+      document.getElementById('seed-growth').textContent = sign + rate + '%';
+      document.getElementById('seed-growth').className = 'stat-value ' + (rate >= 0 ? 'positive' : 'negative');
+    }
+
+    document.getElementById('sell-count').textContent = d.sell_count || 0;
+
+    // 시드 차트 (간이 텍스트형)
+    renderSeedChart(d.seed_growth || []);
+  } catch(e) {}
+}
+
+function renderSeedChart(data) {
+  const el = document.getElementById('seed-chart');
+  if (!data.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:16px 0"><div>데이터 없음</div></div>';
+    return;
+  }
+  const rows = data.slice(-10).map(d => {
+    const sign = (d.daily_profit_loss_rate || 0) >= 0 ? '+' : '';
+    const cls = (d.daily_profit_loss_rate || 0) >= 0 ? 'positive' : 'negative';
+    return `<div class="history-item">
+      <div class="history-date">${d.date}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+        <span style="font-size:14px;font-weight:600">${Math.round((d.total_assets||0)/10000)}만원</span>
+        <span class="${cls}" style="font-size:12px">${sign}${(d.daily_profit_loss_rate||0).toFixed(1)}%</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted)">익절 ${d.sell_count||0}회 · 현금보유 ${d.cash_hold_count||0}회</div>
+    </div>`;
+  }).join('');
+  el.innerHTML = rows || '<div class="empty-state" style="padding:16px 0"><div>데이터 없음</div></div>';
+}
+
+async function loadHistory() {
+  try {
+    const res = await fetch('/api/history?limit=20');
+    const json = await res.json();
+    const el = document.getElementById('history-list');
+
+    if (!json.ok || !json.data.length) {
+      el.innerHTML = '<div class="empty-state" style="padding:16px 0"><div>분석 이력 없음</div></div>';
+      return;
+    }
+
+    el.innerHTML = json.data.map(h => {
+      let actionCls = 'action-hold';
+      if ((h.action||'').includes('매도')) actionCls = 'action-sell';
+      else if ((h.action||'').includes('매수')) actionCls = 'action-buy';
+
+      let resultBadge = '';
+      if (h.actual_result === 'correct') resultBadge = '<span class="badge badge-green" style="float:right">적중</span>';
+      else if (h.actual_result === 'incorrect') resultBadge = '<span class="badge badge-red" style="float:right">미적중</span>';
+      else resultBadge = `<button class="btn btn-secondary btn-sm" style="float:right;padding:3px 8px;font-size:11px" onclick="markResult(${h.id}, this)">결과 입력</button>`;
+
+      const conf = h.confidence ? `<span class="badge ${h.confidence==='높음'?'badge-green':h.confidence==='보통'?'badge-yellow':'badge-red'}">${h.confidence}</span>` : '';
+
+      return `<div class="history-item" id="hi-${h.id}">
+        <div class="history-date">${h.date} ${h.created_at ? new Date(h.created_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}) : ''} · ${h.stock_name||'-'} ${conf}</div>
+        <div class="history-action ${actionCls}">${h.action||'-'} ${resultBadge}</div>
+        <div class="history-reason">${(h.reason||'-').substring(0,80)}${(h.reason||'').length>80?'...':''}</div>
+        ${h.target_price ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">목표가 ${h.target_price.toLocaleString()}원 · 손절가 ${(h.stop_loss||0).toLocaleString()}원</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+async function markResult(id, btn) {
+  const result = confirm('AI 추천이 적중했나요?\n확인=적중 / 취소=미적중');
+  const val = result ? 'correct' : 'incorrect';
+  try {
+    const res = await fetch('/api/history/' + id + '/result', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ result: val })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      const row = document.getElementById('hi-' + id);
+      if (row) {
+        const old = row.querySelector('button');
+        if (old) old.outerHTML = val === 'correct'
+          ? '<span class="badge badge-green" style="float:right">적중</span>'
+          : '<span class="badge badge-red" style="float:right">미적중</span>';
+      }
+    }
+  } catch(e) {}
+}
+
+loadPerformance();
+loadHistory();
+</script>
+</body>
+</html>

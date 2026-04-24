@@ -1,0 +1,22 @@
+{
+  "name": "ai-trader",
+  "version": "1.0.0",
+  "description": "완전 자동화 AI 트레이더 시스템",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^9.4.3",
+    "node-cron": "^3.0.3",
+    "axios": "^1.6.7",
+    "cheerio": "^1.0.0-rc.12",
+    "rss-parser": "^3.13.0",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

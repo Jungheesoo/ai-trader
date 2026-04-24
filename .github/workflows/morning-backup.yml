@@ -1,0 +1,33 @@
+name: Morning Report Backup
+
+on:
+  schedule:
+    # 평일 오전 8:30 KST = UTC 23:30 (전날)
+    - cron: '30 23 * * 0-4'
+  workflow_dispatch:
+
+jobs:
+  morning-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check Oracle Server Health
+        id: health_check
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 \
+            "http://${{ secrets.SERVER_IP }}:${{ secrets.PORT || 3000 }}/health" || echo "000")
+          echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
+          echo "Server health check: $HTTP_CODE"
+
+      - name: Send Backup Morning Alert (Oracle Down)
+        if: steps.health_check.outputs.http_code != '200'
+        run: |
+          curl -s -X POST "https://kapi.kakao.com/v2/api/talk/memo/default/send" \
+            -H "Authorization: Bearer ${{ secrets.KAKAO_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode 'template_object={"object_type":"text","text":"⚠️ [GitHub 백업] Oracle 서버 응답 없음\n\n오전 모닝 리포트를 발송하지 못했습니다.\n서버 상태를 확인해주세요.\n\n서버 IP: ${{ secrets.SERVER_IP }}\n시각: '"$(TZ='Asia/Seoul' date '+%Y-%m-%d %H:%M')"'","link":{"web_url":"https://github.com/${{ github.repository }}/actions"}}'
+
+      - name: Server OK - Skip Backup
+        if: steps.health_check.outputs.http_code == '200'
+        run: echo "Oracle server is healthy. No backup needed."

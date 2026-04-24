@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>자산 입력 - AI 트레이더</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div style="font-size:16px;font-weight:600;">💼 자산현황 입력</div>
+    <div class="subtitle" id="deadline-label"></div>
+  </div>
+</div>
+
+<div id="status-banner"></div>
+
+<div class="card">
+  <div class="card-title">보유 종목</div>
+  <div id="holdings-container"></div>
+  <button class="btn btn-secondary btn-sm" id="add-btn" style="margin-top:8px" onclick="addHolding()">+ 종목 추가</button>
+</div>
+
+<div class="card">
+  <div class="card-title">현금 / 신규 투입금</div>
+  <div class="form-row">
+    <div class="form-group">
+      <label class="form-label">현금 보유액 (원)</label>
+      <input class="form-input" type="number" id="cash-input" placeholder="0" inputmode="numeric">
+    </div>
+    <div class="form-group">
+      <label class="form-label">신규 투입 가능 (원)</label>
+      <input class="form-input" type="number" id="new-invest-input" placeholder="0" inputmode="numeric">
+    </div>
+  </div>
+</div>
+
+<div style="margin:0 16px 16px">
+  <button class="btn btn-primary" id="save-btn" onclick="savePortfolio()">저장 및 AI 분석 시작</button>
+</div>
+
+<div style="padding:0 16px;margin-bottom:16px">
+  <div style="font-size:11px;color:var(--text-muted)">
+    💡 종목 약어: 삼전, 하이닉스, 카카오, 네이버, 현대차, 기아, 두산에너, 삼바, 한화에어, 셀트리온, LG에너지, 포스코
+  </div>
+</div>
+
+<nav class="nav-bottom">
+  <a href="/"><span class="icon">🏠</span>홈</a>
+  <a href="/portfolio.html" class="active"><span class="icon">💼</span>자산입력</a>
+  <a href="/chat.html"><span class="icon">🤖</span>AI질문</a>
+  <a href="/history.html"><span class="icon">📊</span>이력</a>
+</nav>
+
+<script>
+let holdingCount = 0;
+
+function addHolding(data = {}) {
+  holdingCount++;
+  const id = 'h' + holdingCount;
+  const div = document.createElement('div');
+  div.className = 'holding-item';
+  div.id = id;
+  div.innerHTML = `
+    <button class="remove-btn" onclick="removeHolding('${id}')">✕</button>
+    <div class="form-group">
+      <label class="form-label">종목명 (약어 가능)</label>
+      <input class="form-input" type="text" placeholder="예: 두산에너" value="${data.stock_name||''}" id="${id}-name">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">보유 수량 (주)</label>
+        <input class="form-input" type="number" placeholder="0" value="${data.quantity||''}" id="${id}-qty" inputmode="numeric">
+      </div>
+      <div class="form-group">
+        <label class="form-label">평균 단가 (원)</label>
+        <input class="form-input" type="number" placeholder="0" value="${data.avg_price||''}" id="${id}-price" inputmode="numeric">
+      </div>
+    </div>
+  `;
+  document.getElementById('holdings-container').appendChild(div);
+}
+
+function removeHolding(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function getHoldings() {
+  const items = document.querySelectorAll('.holding-item');
+  const result = [];
+  items.forEach(item => {
+    const id = item.id;
+    const name = document.getElementById(id+'-name').value.trim();
+    const qty = document.getElementById(id+'-qty').value;
+    const price = document.getElementById(id+'-price').value;
+    if (name && qty && price) {
+      result.push({ stock_name: name, quantity: parseInt(qty), avg_price: parseFloat(price) });
+    }
+  });
+  return result;
+}
+
+async function savePortfolio() {
+  const btn = document.getElementById('save-btn');
+  const holdings = getHoldings();
+  const cash = parseFloat(document.getElementById('cash-input').value) || 0;
+  const newInvestment = parseFloat(document.getElementById('new-invest-input').value) || 0;
+
+  if (holdings.length === 0) {
+    showBanner('error', '보유 종목을 1개 이상 입력해주세요.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '저장 중...';
+
+  try {
+    const res = await fetch('/api/portfolio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ holdings, cash, newInvestment })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+
+    showBanner('success', '✅ 저장 완료! AI 분석이 시작되었습니다. 카카오톡 알림을 확인해주세요.');
+    btn.textContent = '저장 완료';
+    setTimeout(() => { window.location.href = '/'; }, 2000);
+  } catch (e) {
+    showBanner('error', '저장 실패: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '저장 및 AI 분석 시작';
+  }
+}
+
+function showBanner(type, msg) {
+  const el = document.getElementById('status-banner');
+  const cls = type === 'error' ? 'alert-banner' : type === 'success' ? 'info-banner' : 'warning-banner';
+  el.innerHTML = `<div class="${cls}">${msg}</div>`;
+}
+
+// 마감 시간 표시
+function setDeadline() {
+  const now = new Date();
+  const h = now.getHours(), m = now.getMinutes();
+  const el = document.getElementById('deadline-label');
+  if (h === 8 && m < 10) {
+    el.textContent = '⏰ 8시 10분까지 입력해주세요';
+    el.style.color = 'var(--red)';
+  } else if (h === 8 && m >= 10) {
+    el.textContent = '입력 마감. 저장 가능합니다.';
+  } else {
+    el.textContent = '오늘 자산현황 입력';
+  }
+}
+setDeadline();
+
+// 기존 데이터 로드
+async function loadExisting() {
+  try {
+    const res = await fetch('/api/portfolio/holdings');
+    const json = await res.json();
+    if (json.ok && json.data.length > 0) {
+      json.data.forEach(h => addHolding(h));
+    } else {
+      // 초기 기본값 (두산에너빌리티)
+      addHolding({ stock_name: '두산에너빌리티', quantity: 11, avg_price: 116418 });
+    }
+    // 현금 로드
+    const res2 = await fetch('/api/portfolio');
+    const json2 = await res2.json();
+    if (json2.ok && json2.data) {
+      if (json2.data.cash) document.getElementById('cash-input').value = json2.data.cash;
+      if (json2.data.newInvestment) document.getElementById('new-invest-input').value = json2.data.newInvestment;
+    }
+  } catch(e) {
+    addHolding({ stock_name: '두산에너빌리티', quantity: 11, avg_price: 116418 });
+  }
+}
+loadExisting();
+</script>
+</body>
+</html>

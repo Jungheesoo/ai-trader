@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>AI 질문 - AI 트레이더</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  body { padding-bottom: 120px; }
+  .chat-wrap { padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div style="font-size:16px;font-weight:600;">🤖 AI 질문</div>
+    <div class="subtitle" id="sonnet-status-label">Sonnet 로딩 중...</div>
+  </div>
+</div>
+
+<div id="chat-limit-banner"></div>
+
+<div class="chat-wrap" id="chat-messages"></div>
+
+<div class="chat-input-area">
+  <input type="text" id="chat-input" placeholder="종목 분석, 매매 판단 질문..." maxlength="200">
+  <button id="send-btn" onclick="sendChat()">전송</button>
+</div>
+
+<nav class="nav-bottom">
+  <a href="/"><span class="icon">🏠</span>홈</a>
+  <a href="/portfolio.html"><span class="icon">💼</span>자산입력</a>
+  <a href="/chat.html" class="active"><span class="icon">🤖</span>AI질문</a>
+  <a href="/history.html"><span class="icon">📊</span>이력</a>
+</nav>
+
+<script>
+let sonnetRemaining = 15;
+
+async function loadSonnetStatus() {
+  try {
+    const res = await fetch('/api/chat/sonnet-status');
+    const json = await res.json();
+    if (json.ok) {
+      const d = json.data;
+      sonnetRemaining = d.remaining;
+      document.getElementById('sonnet-status-label').textContent = `Sonnet ${d.used}/15회 사용`;
+      if (!d.allowed) {
+        document.getElementById('chat-limit-banner').innerHTML =
+          '<div class="alert-banner">⚠️ ' + (d.reason || 'Sonnet 호출 한도 초과') + '</div>';
+        document.getElementById('send-btn').disabled = true;
+      } else if (d.remaining <= 3) {
+        document.getElementById('chat-limit-banner').innerHTML =
+          '<div class="warning-banner">⚠️ Sonnet 잔여 ' + d.remaining + '회. 긴급 상황에 사용하세요.</div>';
+      }
+    }
+  } catch(e) {}
+}
+
+async function loadHistory() {
+  try {
+    const res = await fetch('/api/chat/history');
+    const json = await res.json();
+    if (json.ok && json.data.length > 0) {
+      const el = document.getElementById('chat-messages');
+      json.data.reverse().forEach(h => {
+        const q = h.reason.replace('[사용자 질문] ', '').split(' | ')[0];
+        el.appendChild(makeBubble(q, 'user'));
+        el.appendChild(makeAIBubble(h));
+      });
+      el.scrollTop = el.scrollHeight;
+    } else {
+      document.getElementById('chat-messages').innerHTML =
+        '<div class="empty-state" style="padding:40px 16px"><div class="icon">🤖</div><div>궁금한 점을 질문해보세요</div><div style="font-size:11px;color:var(--text-muted);margin-top:8px">현재 포트폴리오 데이터를 바탕으로 AI가 분석합니다</div></div>';
+    }
+  } catch(e) {}
+}
+
+function makeBubble(text, type) {
+  const div = document.createElement('div');
+  div.className = `chat-bubble ${type}`;
+  div.style.margin = type === 'user' ? '8px 16px 4px auto' : '4px 16px 8px';
+  div.textContent = text;
+  return div;
+}
+
+function makeAIBubble(data) {
+  const div = document.createElement('div');
+  div.className = 'chat-bubble ai';
+  div.style.margin = '4px 16px 8px';
+
+  let actionCls = 'action-hold';
+  if ((data.action||'').includes('매도')) actionCls = 'action-sell';
+  else if ((data.action||'').includes('매수')) actionCls = 'action-buy';
+
+  let html = `<div class="action ${actionCls}">${data.action || '판단불가'}</div>`;
+  const reason = (data.reason||'').replace(/\[사용자 질문\][^|]*\|\s*/, '');
+  html += `<div class="reason">${reason || '-'}</div>`;
+  if (data.target_price) {
+    html += `<div style="font-size:11px;margin-top:6px;color:var(--text-muted)">목표가: ${data.target_price.toLocaleString()}원`;
+    if (data.stop_loss) html += ` · 손절가: ${data.stop_loss.toLocaleString()}원`;
+    html += '</div>';
+  }
+  if (data.warning) html += `<div style="font-size:11px;margin-top:4px;color:var(--yellow)">⚠️ ${data.warning}</div>`;
+  div.innerHTML = html;
+  return div;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const btn = document.getElementById('send-btn');
+  const q = input.value.trim();
+  if (!q) return;
+  if (sonnetRemaining <= 0) {
+    alert('오늘 Sonnet 한도를 모두 사용했습니다.');
+    return;
+  }
+
+  const el = document.getElementById('chat-messages');
+  // 빈 상태 제거
+  const empty = el.querySelector('.empty-state');
+  if (empty) empty.remove();
+
+  el.appendChild(makeBubble(q, 'user'));
+
+  const loadingDiv = document.createElement('div');
+  loadingDiv.className = 'chat-bubble ai';
+  loadingDiv.style.margin = '4px 16px 8px';
+  loadingDiv.innerHTML = '<div class="spinner" style="width:16px;height:16px;margin:0"></div>';
+  el.appendChild(loadingDiv);
+  el.scrollTop = el.scrollHeight;
+
+  input.value = '';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q })
+    });
+    const json = await res.json();
+    el.removeChild(loadingDiv);
+
+    if (!json.ok) {
+      const errDiv = document.createElement('div');
+      errDiv.className = 'chat-bubble ai';
+      errDiv.style.margin = '4px 16px 8px';
+      errDiv.style.color = 'var(--red)';
+      errDiv.textContent = '오류: ' + json.error;
+      el.appendChild(errDiv);
+    } else {
+      el.appendChild(makeAIBubble(json.data));
+      sonnetRemaining--;
+      document.getElementById('sonnet-status-label').textContent = `Sonnet ${15-sonnetRemaining}/15회 사용`;
+    }
+  } catch(e) {
+    el.removeChild(loadingDiv);
+    const errDiv = document.createElement('div');
+    errDiv.className = 'chat-bubble ai';
+    errDiv.style.margin = '4px 16px 8px';
+    errDiv.style.color = 'var(--red)';
+    errDiv.textContent = '네트워크 오류';
+    el.appendChild(errDiv);
+  } finally {
+    btn.disabled = false;
+    el.scrollTop = el.scrollHeight;
+  }
+}
+
+document.getElementById('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+loadSonnetStatus();
+loadHistory();
+</script>
+</body>
+</html>

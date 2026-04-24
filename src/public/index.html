@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>AI 트레이더</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header h1" style="font-size:16px;font-weight:600;">📈 AI 트레이더</div>
+    <div class="subtitle" id="today-date"></div>
+  </div>
+  <div class="market-status" id="market-status"></div>
+</div>
+
+<div id="day-warning"></div>
+
+<div class="card">
+  <div class="card-title">총 자산 현황</div>
+  <div class="summary-grid" id="summary-grid">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">보유 종목</div>
+  <div id="holdings-list">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">오늘 AI 분석 요약</div>
+  <div id="ai-summary">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-item">
+    <div class="stat-value" id="sonnet-count">-</div>
+    <div class="stat-label">Sonnet 사용</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value" id="alert-count">-</div>
+    <div class="stat-label">오늘 알림</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value" id="cash-hold-count">-</div>
+    <div class="stat-label">현금보유 판단</div>
+  </div>
+</div>
+
+<nav class="nav-bottom">
+  <a href="/" class="active"><span class="icon">🏠</span>홈</a>
+  <a href="/portfolio.html"><span class="icon">💼</span>자산입력</a>
+  <a href="/chat.html"><span class="icon">🤖</span>AI질문</a>
+  <a href="/history.html"><span class="icon">📊</span>이력</a>
+</nav>
+
+<script>
+const today = new Date();
+document.getElementById('today-date').textContent = today.toLocaleDateString('ko-KR', {year:'numeric',month:'long',day:'numeric',weekday:'short'});
+
+function getMarketStatus() {
+  const h = today.getHours(), m = today.getMinutes();
+  const total = h * 60 + m;
+  const day = today.getDay();
+  if (day === 0 || day === 6) return {status:'closed', label:'주말 휴장'};
+  if (total >= 9*60 && total < 15*60+30) return {status:'open', label:'장 중'};
+  if (total >= 8*60 && total < 9*60) return {status:'pre', label:'장 전'};
+  return {status:'closed', label:'장 마감'};
+}
+
+function renderMarketStatus() {
+  const ms = getMarketStatus();
+  const el = document.getElementById('market-status');
+  const cls = ms.status === 'open' ? 'market-open' : ms.status === 'pre' ? 'market-pre' : 'market-closed';
+  el.className = 'market-status ' + cls;
+  el.innerHTML = `<span class="market-dot"></span>${ms.label}`;
+}
+renderMarketStatus();
+
+// 요일별 경고
+function renderDayWarning() {
+  const day = today.getDay();
+  const el = document.getElementById('day-warning');
+  if (day === 5) {
+    el.innerHTML = '<div class="warning-banner">⚠️ 오늘 금요일: 오후 2시 이후 신규 진입 자제. 주말 효과 대비.</div>';
+  } else if (day === 1) {
+    el.innerHTML = '<div class="info-banner">📌 오늘 월요일: 주말 효과 하락 가능. 급락 시 악재 여부 먼저 확인.</div>';
+  }
+}
+renderDayWarning();
+
+async function loadDashboard() {
+  try {
+    const res = await fetch('/api/portfolio');
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+    const p = json.data;
+
+    // 요약
+    const sign = (p.overallProfitRate || 0) >= 0 ? '+' : '';
+    const cls = (p.overallProfitRate || 0) >= 0 ? 'positive' : 'negative';
+    document.getElementById('summary-grid').innerHTML = `
+      <div class="summary-item">
+        <div class="summary-label">총 운용</div>
+        <div class="summary-value">${Math.round((p.totalAssets||0)/10000)}만원</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">전체 수익</div>
+        <div class="summary-value ${cls}">${sign}${(p.overallProfitRate||0).toFixed(1)}%</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">보유주식</div>
+        <div class="summary-value">${Math.round((p.stockValue||0)/10000)}만원</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">현금</div>
+        <div class="summary-value">${Math.round((p.cash||0)/10000)}만원</div>
+      </div>
+    `;
+
+    // 보유 종목
+    const holdingsEl = document.getElementById('holdings-list');
+    if (!p.holdings || p.holdings.length === 0) {
+      holdingsEl.innerHTML = '<div class="empty-state"><div class="icon">📭</div><div>보유 종목 없음</div><div style="margin-top:8px"><a href="/portfolio.html">자산 입력하기</a></div></div>';
+    } else {
+      holdingsEl.innerHTML = p.holdings.map(h => {
+        const pr = h.profitRate || 0;
+        const pSign = pr >= 0 ? '+' : '';
+        const pCls = pr >= 0 ? 'positive' : 'negative';
+        const rsi = h.rsi ? h.rsi.toFixed(0) : '-';
+        const rsiColor = h.rsi >= 70 ? '#f85149' : h.rsi <= 30 ? '#3fb950' : '#58a6ff';
+        const rsiPct = h.rsi ? Math.min(100, h.rsi) : 50;
+        let actionCls = 'action-hold', actionLabel = h.lastAction || '-';
+        if (actionLabel.includes('매도')) actionCls = 'action-sell';
+        else if (actionLabel.includes('매수')) actionCls = 'action-buy';
+        return `
+          <div class="stock-row">
+            <div class="stock-row-flex">
+              <div>
+                <div class="stock-name">${h.stock_name}</div>
+                <div class="stock-meta">${h.quantity}주 · 평단 ${(h.avg_price||0).toLocaleString()}원</div>
+              </div>
+              <div class="stock-price">
+                <div class="price">${(h.current_price||h.avg_price||0).toLocaleString()}원</div>
+                <div class="rate ${pCls}">${pSign}${pr.toFixed(1)}%</div>
+              </div>
+            </div>
+            <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
+              RSI: <span style="color:${rsiColor}">${rsi}</span> · MACD: ${h.macd||'-'}
+              <div class="rsi-bar"><div class="rsi-fill" style="width:${rsiPct}%;background:${rsiColor}"></div></div>
+            </div>
+            ${actionLabel !== '-' ? `<div class="ai-action"><span class="action-label ${actionCls}">→ ${actionLabel}</span>${h.lastReason ? `<span style="color:var(--text-muted)">${h.lastReason}</span>` : ''}</div>` : ''}
+          </div>`;
+      }).join('');
+    }
+
+    // AI 요약
+    const aiEl = document.getElementById('ai-summary');
+    if (p.latestAnalysis) {
+      const a = p.latestAnalysis;
+      let aCls = 'action-hold';
+      if ((a.action||'').includes('매도')) aCls = 'action-sell';
+      else if ((a.action||'').includes('매수')) aCls = 'action-buy';
+      aiEl.innerHTML = `
+        <div style="font-size:15px;font-weight:700" class="${aCls}">${a.action || '-'}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">${a.reason || '-'}</div>
+        ${a.target_price ? `<div style="font-size:12px;margin-top:6px">목표가: <strong>${a.target_price.toLocaleString()}원</strong> · 손절가: <strong>${(a.stop_loss||0).toLocaleString()}원</strong></div>` : ''}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${new Date(a.created_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}</div>
+      `;
+    } else {
+      aiEl.innerHTML = '<div class="empty-state" style="padding:16px 0"><div>아직 AI 분석 없음</div></div>';
+    }
+  } catch (e) {
+    document.getElementById('holdings-list').innerHTML = '<div class="empty-state"><div>데이터 로드 실패</div><div style="font-size:11px;color:var(--text-muted)">' + e.message + '</div></div>';
+  }
+}
+
+async function loadStats() {
+  try {
+    const res = await fetch('/api/chat/sonnet-status');
+    const json = await res.json();
+    if (json.ok) {
+      document.getElementById('sonnet-count').textContent = `${json.data.used}/15`;
+    }
+    const res2 = await fetch('/api/history/alerts');
+    const json2 = await res2.json();
+    if (json2.ok) document.getElementById('alert-count').textContent = json2.data.length;
+
+    const res3 = await fetch('/api/history?limit=30');
+    const json3 = await res3.json();
+    if (json3.ok) {
+      const cashHolds = json3.data.filter(a => a.cash_recommendation === '현금보유' && a.date === new Date().toISOString().slice(0,10));
+      document.getElementById('cash-hold-count').textContent = cashHolds.length;
+    }
+  } catch (e) { /* silent */ }
+}
+
+loadDashboard();
+loadStats();
+</script>
+</body>
+</html>
