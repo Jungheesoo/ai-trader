@@ -95,15 +95,11 @@ router.get('/history', (req, res) => {
 // GET /api/chat/sonnet-status - Sonnet 호출 현황
 router.get('/sonnet-status', (req, res) => {
   try {
-    const db = getDb();
-    const today = new Date().toISOString().slice(0, 10);
-    const row = db.prepare(
-      "SELECT call_count_today FROM api_calls WHERE date = ? AND model = 'sonnet' ORDER BY id DESC LIMIT 1"
-    ).get(today);
-    const count = row?.call_count_today || 0;
-    const { canCallSonnet: check } = require('../services/guard');
-    const status = check();
-    res.json({ ok: true, data: { used: count, max: 15, remaining: 15 - count, allowed: status.allowed, reason: status.reason } });
+    const { getSonnetRemainingToday, getSonnetTodayCount, SONNET_MAX_PER_DAY } = require('../services/guard');
+    const used = getSonnetTodayCount();
+    const remaining = getSonnetRemainingToday();
+    const status = canCallSonnet();
+    res.json({ ok: true, data: { used, max: SONNET_MAX_PER_DAY, remaining, allowed: status.allowed, reason: status.reason } });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
