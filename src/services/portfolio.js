@@ -60,14 +60,13 @@ async function enrichHoldingsWithPrices(holdings) {
 
       if (!stockData) {
         kisFailCount++;
-        // KIS 3회 연속 실패 시 네이버 자동 전환 + 카카오 알림
-        if (kisFailCount >= 3 && !kisBackupMode) {
+        if (!kisBackupMode) {
           kisBackupMode = true;
           if (!kisBackupAlertSent) {
             kisBackupAlertSent = true;
             try {
               const { sendErrorAlert } = require('./alert');
-              await sendErrorAlert('⚠️ [KIS API 장애] 한국투자증권 API 3회 연속 실패. 네이버 금융 15분 지연 데이터로 자동 전환합니다.');
+              await sendErrorAlert('⚠️ [KIS API 장애] 한국투자증권 API 실패. 네이버 금융 데이터로 자동 전환합니다.');
             } catch (e) { /* silent */ }
           }
         }
@@ -75,12 +74,11 @@ async function enrichHoldingsWithPrices(holdings) {
         const backup = await getNaverFinancePrice(h.stock_code);
         if (backup) {
           stockData = { price: backup.price, source: 'naver_backup', delayed: true };
-          kisFailCount = 0; // 네이버 성공 시 카운터 리셋
         }
       } else {
-        kisFailCount = 0; // KIS 성공 시 카운터 리셋
+        kisFailCount = 0;
         if (kisBackupMode) {
-          kisBackupMode = false; // KIS 복구 감지 → 자동 복귀
+          kisBackupMode = false;
           kisBackupAlertSent = false;
         }
       }

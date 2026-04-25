@@ -205,7 +205,6 @@ async function runAnalysisPipeline(portfolioSummary) {
   const { checkDart } = require('./dart');
   const { sendUrgentAlert, sendApiLimitAlert } = require('./alert');
   const { getSonnetRemainingToday } = require('./claude-sonnet');
-  const { canCallSonnet } = require('./guard');
 
   if (getSonnetRemainingToday() <= 0) {
     await sendApiLimitAlert();
@@ -217,18 +216,29 @@ async function runAnalysisPipeline(portfolioSummary) {
   const holdings = portfolioSummary.holdings || [];
   if (holdings.length === 0) return;
 
-  // 뉴스 수집
+  // 뉴스 수집 (news_cache로 오늘 이미 수집한 뉴스 URL 중복 방지)
+  const cachedUrls = new Set(
+    db.prepare('SELECT url FROM news_cache WHERE date = ?').all(today).map(r => r.url)
+  );
+
   let allNews = [];
   try {
     const rss = await fetchAllRSS();
-    allNews.push(...rss);
+    const newRss = rss.filter(n => n.url && !cachedUrls.has(n.url));
+    // 새 뉴스만 캐시 저장
+    const cacheStmt = db.prepare('INSERT OR IGNORE INTO news_cache (date, source, title, url, content) VALUES (?, ?, ?, ?, ?)');
+    for (const n of newRss) {
+      cacheStmt.run(today, n.source || '', n.title || '', n.url || '', n.content || '');
+    }
+    allNews.push(...newRss);
   } catch (e) { console.warn('[Pipeline] RSS 실패:', e.message); }
 
   try {
     for (const h of holdings) {
       if (h.stock_name) {
         const naverNews = await getNaverNews(h.stock_name);
-        allNews.push(...naverNews);
+        const newNaver = naverNews.filter(n => n.url && !cachedUrls.has(n.url));
+        allNews.push(...newNaver);
       }
     }
   } catch (e) { console.warn('[Pipeline] 네이버 뉴스 실패:', e.message); }

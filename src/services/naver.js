@@ -65,7 +65,7 @@ async function getNaverFinancePrice(stockCode) {
       timeout: 10000
     });
     const $ = cheerio.load(res.data);
-    const priceText = $('.blind').first().text().replace(/,/g, '');
+    const priceText = ($('.no_today .blind').first().text() || $('.today .blind').first().text()).replace(/,/g, '');
     const price = parseFloat(priceText);
     if (!price || isNaN(price)) throw new Error('가격 파싱 실패');
     return { price, source: 'naver_backup', delayed: true };

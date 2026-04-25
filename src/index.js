@@ -159,6 +159,15 @@ async function start() {
     initDb();
     console.log('[DB] 초기화 완료');
 
+    // 필수 환경변수 경고
+    const requiredEnv = ['CLAUDE_API_KEY', 'KIS_APP_KEY', 'KIS_APP_SECRET', 'KAKAO_ACCESS_TOKEN', 'KAKAO_REFRESH_TOKEN'];
+    for (const key of requiredEnv) {
+      if (!process.env[key]) console.warn(`[Config] ⚠️  ${key} 미설정`);
+    }
+    if (!process.env.SERVER_IP || process.env.SERVER_IP.includes('여기에')) {
+      console.warn('[Config] ⚠️  SERVER_IP 미설정 - 카카오 링크가 localhost로 표시됩니다. .env의 SERVER_IP를 서버 공인 IP로 변경하세요.');
+    }
+
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`[Server] AI 트레이더 시작 - http://0.0.0.0:${PORT}`);
       console.log('[Server] 스케줄러 활성화');

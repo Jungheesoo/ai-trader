@@ -20,8 +20,15 @@ const STOCK_ALIASES = {
   '포스코': { name: 'POSCO홀딩스', code: '005490' }
 };
 
+// 정식명 → code 역방향 맵
+const NAME_TO_CODE = {};
+for (const [, v] of Object.entries(STOCK_ALIASES)) {
+  NAME_TO_CODE[v.name] = v.code;
+}
+
 function resolveAlias(name) {
   if (STOCK_ALIASES[name]) return STOCK_ALIASES[name];
+  if (NAME_TO_CODE[name]) return { name, code: NAME_TO_CODE[name] };
   return { name, code: null };
 }
 
