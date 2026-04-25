@@ -22,4 +22,8 @@ function getDb() {
   return db;
 }
 
-module.exports = { getDb };
+function initDb() {
+  return getDb(); // DB 연결 + 스키마 실행
+}
+
+module.exports = { getDb, initDb };

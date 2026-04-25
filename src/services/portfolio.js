@@ -2,6 +2,11 @@ const { getDb } = require('../db/database');
 const { getFullStockData } = require('./kis');
 const { getNaverFinancePrice } = require('./naver');
 
+// KIS 연속 실패 카운터 (프롬프트 섹션 8-4)
+let kisFailCount = 0;
+let kisBackupMode = false;
+let kisBackupAlertSent = false;
+
 function getToday() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -48,12 +53,35 @@ async function enrichHoldingsWithPrices(holdings) {
   for (const h of holdings) {
     let stockData = null;
     if (h.stock_code) {
-      stockData = await getFullStockData(h.stock_code);
+      // KIS 백업모드가 아니면 먼저 KIS 시도
+      if (!kisBackupMode) {
+        stockData = await getFullStockData(h.stock_code);
+      }
+
       if (!stockData) {
-        // KIS 실패 시 네이버 백업
+        kisFailCount++;
+        // KIS 3회 연속 실패 시 네이버 자동 전환 + 카카오 알림
+        if (kisFailCount >= 3 && !kisBackupMode) {
+          kisBackupMode = true;
+          if (!kisBackupAlertSent) {
+            kisBackupAlertSent = true;
+            try {
+              const { sendErrorAlert } = require('./alert');
+              await sendErrorAlert('⚠️ [KIS API 장애] 한국투자증권 API 3회 연속 실패. 네이버 금융 15분 지연 데이터로 자동 전환합니다.');
+            } catch (e) { /* silent */ }
+          }
+        }
+        // 네이버 백업
         const backup = await getNaverFinancePrice(h.stock_code);
         if (backup) {
           stockData = { price: backup.price, source: 'naver_backup', delayed: true };
+          kisFailCount = 0; // 네이버 성공 시 카운터 리셋
+        }
+      } else {
+        kisFailCount = 0; // KIS 성공 시 카운터 리셋
+        if (kisBackupMode) {
+          kisBackupMode = false; // KIS 복구 감지 → 자동 복귀
+          kisBackupAlertSent = false;
         }
       }
     }

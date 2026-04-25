@@ -123,6 +123,16 @@ ${context || ''}
 위 데이터만을 근거로 분석하세요. 데이터가 없는 항목은 판단불가로 처리하세요.
 부분매도 절대 금지. 모든 매도는 전량매도만 추천.
 
+[전량매도 권고 조건 - 아래 중 2개 이상 동시 충족 시]
+- 주가 -5% 이상 급락
+- 트레일링 스탑(고점 -7%) 도달
+- 외국인 + 기관 동시 대량 매도
+- DART 공시: 실적쇼크/횡령/배임/소송
+- 동일 악재 3개 이상 매체 동시 보도
+- 미국 증시 -3% 이상 + 관련 업종 악재 동시
+- RSI 70 이상 + 거래량 급감 동시
+- 나스닥 -3% 이상: 즉시 긴급 분석 필요
+
 [익절 후 재투자 vs 현금 보유 판단 기준]
 장 마감까지: ${minutesLeft}분
 ${isOneHourBeforeClose() ? '⚠️ 장 마감 1시간 이내(14:30 이후) - 신규 진입 자제. cash_recommendation을 현금보유로 설정.' : ''}
@@ -135,19 +145,20 @@ ${isMonday ? '오늘 월요일: 주말 효과 하락 가능. 급락 시 악재 �
 }
 
 async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, context = '') {
-  // Haiku 필터링
+  // Haiku 필터링 (filterNewsBatch는 flat 구조 반환: {title, relevant, urgency, ...})
   const haikuResults = await filterNewsBatch(allNews, enrichedHoldings);
-  const relevantNews = haikuResults.filter(r => r.result?.relevant === true);
+  const relevantNews = haikuResults.filter(n => n.relevant === true);
 
   // 이상 감지 체크
   let triggerReasons = [];
   for (const h of enrichedHoldings) {
-    const { should, reasons } = shouldCallSonnet(h, relevantNews.filter(n =>
-      n.news.title?.includes(h.stock_name)
-    ));
+    const holdingNews = relevantNews.filter(n =>
+      (n.title || '').includes(h.stock_name)
+    );
+    const { should, reasons } = shouldCallSonnet(h, holdingNews);
     if (should) triggerReasons.push(...reasons);
   }
-  if (relevantNews.some(n => n.result?.urgency === '긴급')) {
+  if (relevantNews.some(n => n.urgency === '긴급')) {
     triggerReasons.push('긴급 뉴스');
   }
 

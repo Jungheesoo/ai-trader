@@ -54,12 +54,15 @@ const SYSTEM_PROMPT = `당신은 한국 주식 분석 AI입니다.
   "cash_recommendation": "재투자|현금보유|판단불가"
 }`;
 
-async function callSonnet(userPrompt, context = '') {
+// userPrompt: string 또는 object(JSON.stringify 자동 처리)
+// callerTag: 호출 출처 식별용 태그 (문자열, 메시지에 포함되지 않음)
+async function callSonnet(userPrompt, callerTag = '') {
   const check = canCallSonnet();
   if (!check.allowed) {
-    console.warn(`[Sonnet] 호출 차단: ${check.reason}`);
+    console.warn(`[Sonnet][${callerTag}] 호출 차단: ${check.reason}`);
     // 하루 15회 한도 도달 시 카카오 알림 (1회만)
-    if (check.reason.includes('최대 15회') || check.reason.includes(`최대${process.env.CLAUDE_SONNET_MAX_CALLS_PER_DAY || 15}회`)) {
+    const maxDay = parseInt(process.env.CLAUDE_SONNET_MAX_CALLS_PER_DAY) || 15;
+    if (check.reason.includes(`최대 ${maxDay}회`)) {
       try {
         const { sendApiLimitAlert } = require('./alert');
         await sendApiLimitAlert();
@@ -68,12 +71,12 @@ async function callSonnet(userPrompt, context = '') {
     return null;
   }
 
-  const messages = [];
-  if (context) {
-    messages.push({ role: 'user', content: context });
-    messages.push({ role: 'assistant', content: '분석할 준비가 되었습니다.' });
-  }
-  messages.push({ role: 'user', content: userPrompt });
+  // 객체가 넘어오면 JSON 문자열로 변환 (Claude API는 string content만 허용)
+  const promptStr = typeof userPrompt === 'object'
+    ? JSON.stringify(userPrompt, null, 2)
+    : String(userPrompt);
+
+  const messages = [{ role: 'user', content: promptStr }];
 
   try {
     const response = await axios.post(
