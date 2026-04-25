@@ -95,4 +95,7 @@ async function collectNightNews() {
   return results;
 }
 
-module.exports = { collectAllNews, collectNightNews, fetchRSS };
+// fetchAllRSS: collectAllNews의 alias (scheduler/analyzer에서 사용)
+const fetchAllRSS = collectAllNews;
+
+module.exports = { collectAllNews, collectNightNews, fetchRSS, fetchAllRSS };

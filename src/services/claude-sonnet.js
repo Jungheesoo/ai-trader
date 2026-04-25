@@ -58,6 +58,13 @@ async function callSonnet(userPrompt, context = '') {
   const check = canCallSonnet();
   if (!check.allowed) {
     console.warn(`[Sonnet] 호출 차단: ${check.reason}`);
+    // 하루 15회 한도 도달 시 카카오 알림 (1회만)
+    if (check.reason.includes('최대 15회') || check.reason.includes(`최대${process.env.CLAUDE_SONNET_MAX_CALLS_PER_DAY || 15}회`)) {
+      try {
+        const { sendApiLimitAlert } = require('./alert');
+        await sendApiLimitAlert();
+      } catch (e) { /* silent */ }
+    }
     return null;
   }
 

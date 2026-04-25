@@ -75,4 +75,7 @@ async function getNaverFinancePrice(stockCode) {
   }
 }
 
-module.exports = { searchNews, crawlArticle, getStockNews, getNaverFinancePrice };
+// getNaverNews: getStockNews의 alias (analyzer에서 사용)
+const getNaverNews = getStockNews;
+
+module.exports = { searchNews, crawlArticle, getStockNews, getNaverNews, getNaverFinancePrice };

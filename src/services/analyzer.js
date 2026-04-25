@@ -1,34 +1,58 @@
 const { callSonnet } = require('./claude-sonnet');
 const { filterNewsBatch } = require('./claude-haiku');
-const { getMinutesUntilClose, isFridayAfternoon } = require('./portfolio');
+const { getMinutesUntilClose, isFridayAfternoon, isOneHourBeforeClose } = require('./portfolio');
 
-// Sonnet 호출 조건 체크 (12가지)
-function shouldCallSonnet(holding, news = []) {
+// Sonnet 호출 조건 체크 (프롬프트 섹션 12 전체 반영)
+function shouldCallSonnet(holding, news = [], watchlistCandidate = null) {
   const reasons = [];
 
+  // 1. 주가 ±3% 이상 변동
   if (holding.changeRate !== null && Math.abs(holding.changeRate) >= 3) {
     reasons.push(`주가 ${holding.changeRate}% 변동`);
   }
+  // 2. 거래량 평소 대비 2배 이상
   if (holding.volumeRatio !== null && holding.volumeRatio >= 2) {
     reasons.push(`거래량 ${holding.volumeRatio}배`);
   }
+  // 3. 외국인 대량 매도/매수
   if (holding.foreignNet !== null && Math.abs(holding.foreignNet) > 100000) {
     reasons.push('외국인 대량 매매');
   }
+  // 4. 기관 대량 매도/매수
   if (holding.institutionNet !== null && Math.abs(holding.institutionNet) > 100000) {
     reasons.push('기관 대량 매매');
   }
+  // 5. Haiku yes 뉴스
   if (news.length > 0) {
     reasons.push('영향 뉴스 감지');
   }
+  // 6. 트레일링 스탑 도달 (고점 -7%)
   if (holding.trailingStop && holding.current_price <= holding.trailingStop) {
     reasons.push('트레일링 스탑 도달');
   }
+  // 7. 목표가 도달
+  if (holding.target_price && holding.current_price >= holding.target_price) {
+    reasons.push('목표가 도달');
+  }
+  // 8. RSI 70 이상 또는 30 이하
   if (holding.rsi !== null && (holding.rsi >= 70 || holding.rsi <= 30)) {
     reasons.push(`RSI ${holding.rsi}`);
   }
+  // 9. MACD 데드크로스 또는 골든크로스
   if (holding.macd === '데드크로스' || holding.macd === '골든크로스') {
     reasons.push(`MACD ${holding.macd}`);
+  }
+  // 10. 기회비용 계산 - 대체 종목이 현재 종목보다 2배 이상 유리
+  if (watchlistCandidate && holding.current_price && holding.avg_price) {
+    const currentUpside = holding.target_price
+      ? ((holding.target_price - holding.current_price) / holding.current_price) * 100
+      : null;
+    const candidateUpside = watchlistCandidate.target_price
+      ? ((watchlistCandidate.target_price - watchlistCandidate.current_price) / watchlistCandidate.current_price) * 100
+      : null;
+    if (currentUpside !== null && candidateUpside !== null && candidateUpside >= currentUpside * 2) {
+      reasons.push(`기회비용: ${watchlistCandidate.stock_name} 대체 유리 (${candidateUpside.toFixed(1)}% vs ${currentUpside.toFixed(1)}%)`);
+    }
   }
 
   return { should: reasons.length > 0, reasons };
@@ -56,8 +80,17 @@ MACD: ${h.macd ?? '데이터없음'}
 트레일링스탑: ${h.trailingStop?.toLocaleString() ?? '데이터없음'}원`
   ).join('\n---');
 
+  // 나스닥 관련 뉴스 추출 (RSS에서 수집된 나스닥/미국증시 뉴스)
+  const nasdaqNews = relevantNews.filter(n =>
+    (n.source || '').includes('나스닥') || (n.title || '').includes('NASDAQ') ||
+    (n.title || '').includes('나스닥') || (n.source || '').includes('investing')
+  );
+  const nasdaqNote = nasdaqNews.length > 0
+    ? nasdaqNews[0].title
+    : '데이터없음 (RSS 미수집)';
+
   const newsText = relevantNews.length > 0
-    ? relevantNews.map(n => `[${n.news.source}] ${n.news.title}\n${n.news.content || n.news.summary}`).join('\n\n')
+    ? relevantNews.map(n => `[${n.source || n.news?.source}] ${n.title || n.news?.title}\n${n.content || n.summary || n.news?.content || n.news?.summary || ''}`).join('\n\n')
     : '영향 뉴스 없음';
 
   const watchlistText = (watchlist || []).slice(0, 10).map(w =>
@@ -66,6 +99,7 @@ MACD: ${h.macd ?? '데이터없음'}
 
   return `분석 요청 시각: ${now.toLocaleString('ko-KR')} (${dayName}요일)
 장 마감까지: ${minutesLeft}분
+나스닥/미국증시 동향: ${nasdaqNote}
 ${isFriday ? '⚠️ 오늘은 금요일입니다. 주말 리스크 고려 필요.' : ''}
 ${isMonday ? '⚠️ 오늘은 월요일입니다. 주말 효과 가능성 고려.' : ''}
 
@@ -87,9 +121,17 @@ ${watchlistText || '스캔 데이터 없음'}
 ${context || ''}
 
 위 데이터만을 근거로 분석하세요. 데이터가 없는 항목은 판단불가로 처리하세요.
-부분매도 추천 절대 금지. 모든 매도는 전량매도만 추천.
-익절 후 재투자 vs 현금 보유 판단: 장 마감까지 ${minutesLeft}분 남음. ${minutesLeft < 60 ? '장 마감 1시간 이내 - 신규 진입 자제.' : ''}
-${isFridayAfternoon() ? '금요일 오후 - 신규 진입 자제 권고.' : ''}`;
+부분매도 절대 금지. 모든 매도는 전량매도만 추천.
+
+[익절 후 재투자 vs 현금 보유 판단 기준]
+장 마감까지: ${minutesLeft}분
+${isOneHourBeforeClose() ? '⚠️ 장 마감 1시간 이내(14:30 이후) - 신규 진입 자제. cash_recommendation을 현금보유로 설정.' : ''}
+${isFridayAfternoon() ? '⚠️ 금요일 오후 14:00 이후 - 신규 진입 자제. cash_recommendation을 현금보유로 설정.' : ''}
+${isFriday && !isFridayAfternoon() ? '오늘 금요일: 오후 2시 이후 신규 진입 자제 예정.' : ''}
+${isMonday ? '오늘 월요일: 주말 효과 하락 가능. 급락 시 악재 없으면 매수 기회로 판단.' : ''}
+
+재투자 허용 조건 (모두 충족 시에만): 시장 방향성 긍정, 명확한 대체 종목 존재, 장 마감 1시간 이상 남음, 글로벌 악재 없음
+현금 보유 조건 (하나라도 해당 시): 시장 하락 중, 마땅한 대체 종목 없음, 장 마감 1시간 이내, 주말 효과 우려`;
 }
 
 async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, context = '') {

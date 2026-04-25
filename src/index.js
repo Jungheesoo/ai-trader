@@ -50,6 +50,14 @@ cron.schedule('0 8 * * 1-5', async () => {
   await runScan();
 }, { timezone: 'Asia/Seoul' });
 
+// 평일 오전 8:10 - 자산입력 마감 (미입력 시 전일 데이터 자동 사용 - portfolio.js getTodayHoldings가 처리)
+cron.schedule('10 8 * * 1-5', async () => {
+  if (!isWeekday(new Date())) return;
+  const { getTodayHoldings } = require('./services/portfolio');
+  const holdings = getTodayHoldings();
+  console.log(`[AutoLoad] 8:10 자산입력 마감 체크. 보유종목 ${holdings.length}건 (전일 자동포함)`);
+}, { timezone: 'Asia/Seoul' });
+
 // 평일 오전 8:30 - 모닝 리포트
 cron.schedule('30 8 * * 1-5', async () => {
   await runMorningReport();

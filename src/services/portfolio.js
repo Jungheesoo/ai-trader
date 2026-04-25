@@ -119,10 +119,21 @@ function getMinutesUntilClose() {
   return Math.max(0, Math.round((close - now) / 60000));
 }
 
+// 프롬프트 섹션 9-2: 장 마감 1시간 이내 = 오후 2시 30분 이후 신규 진입 자제
+// 프롬프트 섹션 10: 금요일 오후 2시 이후 신규 진입 자제
 function isAfternoonCutoff() {
   const now = new Date();
   const h = now.getHours();
   const m = now.getMinutes();
+  // 오후 2시(14:00) 이후 = 금요일 신규 진입 자제 기준
+  return h >= 14;
+}
+
+function isOneHourBeforeClose() {
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  // 오후 2시 30분(14:30) 이후 = 장 마감 1시간 이내
   return h > 14 || (h === 14 && m >= 30);
 }
 
@@ -185,6 +196,7 @@ module.exports = {
   calcOpportunityCost,
   getMinutesUntilClose,
   isAfternoonCutoff,
+  isOneHourBeforeClose,
   isFridayAfternoon,
   getPortfolioSummary
 };

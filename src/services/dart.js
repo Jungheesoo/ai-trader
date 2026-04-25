@@ -101,4 +101,9 @@ async function checkNewDisclosures(holdings) {
   return newItems;
 }
 
-module.exports = { checkNewDisclosures, getDisclosures, getCorpCode };
+// checkDart: checkNewDisclosures의 단일 종목 wrapper (analyzer에서 사용)
+async function checkDart(stockCode, stockName) {
+  return checkNewDisclosures([{ stock_code: stockCode, stock_name: stockName }]);
+}
+
+module.exports = { checkNewDisclosures, checkDart, getDisclosures, getCorpCode };
