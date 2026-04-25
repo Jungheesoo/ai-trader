@@ -135,7 +135,7 @@ async function loadDashboard() {
         const pSign = pr >= 0 ? '+' : '';
         const pCls = pr >= 0 ? 'positive' : 'negative';
         const rsi = h.rsi ? h.rsi.toFixed(0) : '-';
-        const rsiColor = h.rsi >= 70 ? '#f85149' : h.rsi <= 30 ? '#3fb950' : '#58a6ff';
+        const rsiColor = h.rsi >= 70 ? '#dc2626' : h.rsi <= 30 ? '#16a34a' : '#2563eb';
         const rsiPct = h.rsi ? Math.min(100, h.rsi) : 50;
         let actionCls = 'action-hold', actionLabel = h.lastAction || '-';
         if (actionLabel.includes('매도')) actionCls = 'action-sell';
