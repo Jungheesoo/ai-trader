@@ -303,3 +303,285 @@ pm2 restart ai-trader
 □ portfolio.html에서 자산 입력 → 저장 성공
 □ chat.html에서 AI 질문 → 응답 수신
 ```
+
+---
+
+## Google Cloud 배포 가이드
+
+누구나 따라할 수 있는 단계별 안내.
+
+---
+
+### Step 1. Google Cloud 계정 생성
+
+1. 브라우저에서 https://cloud.google.com 접속
+2. 우측 상단 **"무료로 시작하기"** 클릭
+3. Gmail 계정으로 로그인
+4. 국가: **대한민국** 선택 → 약관 동의 → 계속
+5. 카드 정보 입력 (본인 확인 용도, e2-micro는 실제 과금 없음)
+6. 가입 완료 — "$300 크레딧 + 무료 티어" 화면 표시 → 콘솔로 이동
+
+---
+
+### Step 2. VM 인스턴스 생성
+
+1. https://console.cloud.google.com 접속
+2. 상단 검색창에 `Compute Engine` 입력 → 클릭
+3. 처음 사용 시 **"사용 설정"** 클릭 (1~2분 대기)
+4. **"+ 인스턴스 만들기"** 클릭
+5. 아래 설정 입력:
+
+   | 항목 | 값 |
+   |------|-----|
+   | 이름 | ai-trader |
+   | 리전 | **asia-northeast3 (서울)** ← 반드시 서울 선택 |
+   | 영역 | asia-northeast3-a |
+   | 시리즈 | E2 |
+   | 머신 유형 | **e2-micro** ← 무료 티어 해당 |
+   | 부팅 디스크 OS | Ubuntu 22.04 LTS |
+   | 부팅 디스크 유형 | 표준 영구 디스크 |
+   | 크기 | 30GB |
+   | 방화벽 | HTTP 트래픽 허용 ✅, HTTPS 트래픽 허용 ✅ |
+
+6. **"만들기"** 클릭 (30초~1분 대기)
+7. VM 목록에서 **외부 IP 주소 메모** → 이것이 `SERVER_IP`
+
+---
+
+### Step 3. 방화벽 규칙 추가 (포트 3000)
+
+1. 상단 검색창에 `방화벽` 입력 → **"방화벽 정책"** 클릭
+2. **"+ 방화벽 규칙 만들기"** 클릭
+3. 아래 설정 입력:
+
+   | 항목 | 값 |
+   |------|-----|
+   | 이름 | allow-3000 |
+   | 트래픽 방향 | 수신 |
+   | 일치 시 작업 | 허용 |
+   | 대상 | 네트워크의 모든 인스턴스 |
+   | 소스 IPv4 범위 | 0.0.0.0/0 |
+   | 프로토콜 및 포트 | TCP, 포트: 3000 |
+
+4. **"만들기"** 클릭
+
+---
+
+### Step 4. SSH 접속
+
+1. Compute Engine → VM 인스턴스 페이지 이동
+2. ai-trader 인스턴스 행 오른쪽 **"SSH"** 버튼 클릭
+3. 브라우저에서 검은 터미널 창 열림 → 접속 성공
+4. 확인:
+   ```bash
+   whoami
+   ```
+   Google 계정 사용자명 출력되면 정상
+
+---
+
+### Step 5. 서버 초기 세팅
+
+```bash
+# setup.sh 다운로드 후 실행
+curl -o setup.sh https://raw.githubusercontent.com/Jungheesoo/ai-trader/main/setup.sh
+chmod +x setup.sh
+./setup.sh
+
+# 설치 확인
+node --version   # v18.x.x
+npm --version    # 9.x.x 이상
+pm2 --version    # 5.x.x 이상
+```
+
+---
+
+### Step 6. 코드 배포
+
+```bash
+cd ~
+git clone https://github.com/Jungheesoo/ai-trader.git
+cd ai-trader
+npm install --production
+```
+
+---
+
+### Step 7. .env 파일 서버에 생성
+
+```bash
+nano .env
+```
+
+로컬 `.env` 내용 전체 붙여넣기 후 아래 항목 수정:
+
+```
+SERVER_IP=Step2에서_메모한_외부IP
+KAKAO_REDIRECT_URI=http://Step2에서_메모한_외부IP:3000/auth/kakao/callback
+```
+
+저장: `Ctrl+X` → `Y` → `Enter`
+
+확인:
+```bash
+cat .env | grep SERVER_IP
+# SERVER_IP=34.64.xxx.xxx 출력되면 정상
+```
+
+---
+
+### Step 8. PM2로 서버 실행
+
+```bash
+# 시작
+pm2 start ecosystem.config.js
+
+# 상태 확인 (online이면 성공)
+pm2 status
+
+# 로그 확인
+pm2 logs ai-trader
+
+# 재부팅 후 자동 시작 설정
+pm2 save
+pm2 startup
+# → 출력된 명령어를 복사하여 그대로 실행
+
+# 브라우저에서 접속 확인
+# http://서버외부IP:3000 → AI 트레이더 웹 UI 표시되면 성공
+```
+
+---
+
+### Step 9. 카카오 설정 업데이트
+
+1. https://developers.kakao.com → ai-trader 앱 → **카카오 로그인 → Redirect URI 추가**:
+   ```
+   http://서버외부IP:3000/auth/kakao/callback
+   ```
+
+2. 브라우저에서 Access Token 발급:
+   ```
+   http://서버외부IP:3000/auth/kakao/login
+   ```
+   → 카카오 로그인 → 동의 → 화면에 표시된 토큰 복사
+
+3. `.env` 업데이트:
+   ```bash
+   nano .env
+   # KAKAO_ACCESS_TOKEN=발급받은토큰
+   # KAKAO_REFRESH_TOKEN=발급받은리프레시토큰
+   ```
+
+4. 서버 재시작:
+   ```bash
+   pm2 restart ai-trader
+   ```
+
+---
+
+### Step 10. KIS API 서버 IP 등록
+
+> ⚠️ 이 단계를 건너뛰면 KIS API가 403 오류 발생
+
+1. https://apiportal.koreainvestment.com 접속 → 로그인
+2. **앱 관리** → 앱 선택 → **API 신청 현황**
+3. **IP 관리** 또는 **허용 IP** 항목에 Step 2에서 메모한 서버 외부 IP 추가
+4. 저장 후 약 5분 대기
+
+---
+
+### Step 11. 최종 동작 확인
+
+```bash
+pm2 status                    # ai-trader: online 확인
+curl http://localhost:3000/health  # {"ok":true} 확인
+pm2 logs ai-trader --lines 30 # 에러 없음 확인
+```
+
+브라우저:
+- `http://서버IP:3000` → 대시보드 ✅
+- `http://서버IP:3000/portfolio.html` → 자산 입력 ✅
+
+재부팅 후 자동 실행 확인:
+```bash
+sudo reboot
+# 1분 후 SSH 재접속
+pm2 status  # ai-trader: online ✅
+```
+
+---
+
+### 자주 발생하는 오류 해결
+
+| 오류 | 원인 | 해결 |
+|------|------|------|
+| pm2 start 후 errored | .env 누락 또는 npm install 미실행 | `pm2 logs ai-trader` 로 확인 |
+| 브라우저 접속 안 됨 | 포트 3000 방화벽 미설정 | Step 3 재확인 |
+| KIS API 403 | 서버 IP 미등록 | Step 10 진행 |
+| 카카오 토큰 오류 | Redirect URI 불일치 | Step 9 재확인 |
+
+---
+
+### 비용 구조
+
+| 항목 | 비용 |
+|------|------|
+| Google Cloud e2-micro | 무료 (월 744시간 무료 티어) |
+| Claude API | 약 $2~3/월 |
+| 카카오/네이버/DART/KIS/RSS | 전부 무료 |
+| **합계** | **약 $2~3/월** |
+
+> Claude.ai Pro($20/월)와 API는 완전히 별개. Pro 해지 후에도 시스템 정상 운영됨.
+
+---
+
+### 전체 프로젝트 체크리스트
+
+#### API 키 발급
+- [x] Claude API 키 + Anthropic Console 월 $5 한도 설정
+- [x] 한투 KIS App Key / App Secret / 계좌번호
+- [ ] 카카오 REST API 키 (**채팅창 노출로 재발급 필수**)
+- [ ] 카카오 Client Secret (**채팅창 노출로 재발급 필수**)
+- [x] 네이버 Client ID / Client Secret
+- [x] DART API 키
+
+#### 카카오 설정
+- [x] 카카오 로그인 활성화 ON
+- [ ] Redirect URI 등록 (로컬 + 서버 IP)
+- [ ] 동의항목: 카카오톡 메시지 전송 ON
+- [ ] Access Token / Refresh Token 발급 및 저장
+
+#### .env 파일
+- [x] CLAUDE_API_KEY, 모델명, 호출 제한값
+- [x] KIS_APP_KEY, KIS_APP_SECRET, KIS_ACCOUNT_NO
+- [ ] KAKAO_CLIENT_ID (재발급 후 입력)
+- [ ] KAKAO_CLIENT_SECRET (재발급 후 입력)
+- [ ] KAKAO_REDIRECT_URI, KAKAO_ACCESS_TOKEN, KAKAO_REFRESH_TOKEN
+- [x] NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
+- [x] DART_API_KEY
+- [ ] SERVER_IP (Google Cloud 외부 IP)
+
+#### Google Cloud 배포
+- [ ] Google Cloud 계정 생성 (Step 1)
+- [ ] e2-micro VM 생성 서울 리전 (Step 2)
+- [ ] 방화벽 포트 3000 개방 (Step 3)
+- [ ] SSH 접속 확인 (Step 4)
+- [ ] setup.sh 실행 (Step 5)
+- [ ] git clone + npm install (Step 6)
+- [ ] 서버에 .env 파일 생성 (Step 7)
+- [ ] pm2 start + pm2 startup + pm2 save (Step 8)
+- [ ] 카카오 Redirect URI 서버 IP 추가 + 토큰 재발급 (Step 9)
+- [ ] KIS Developers에 서버 IP 등록 (Step 10)
+- [ ] 웹 UI + 카카오톡 알림 최종 확인 (Step 11)
+
+#### 보안
+- [ ] 카카오 REST API 키 재발급 (노출됨)
+- [ ] 카카오 Client Secret 재발급 (노출됨)
+- [x] .env .gitignore 등록 확인
+
+#### 향후 구현 예정
+- [ ] history.html AI 적중률 입력 버튼 (correct/incorrect)
+- [ ] performance/seed_growth 적재 완성
+- [ ] 퀀트 스캔 2500종목 전체 확장
+- [ ] 2027년 이후 음력 휴일 업데이트
