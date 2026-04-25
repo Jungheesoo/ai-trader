@@ -80,7 +80,7 @@ async function runClosingReport() {
       portfolio.totalAssets,
       portfolio.stockValue,
       portfolio.cash,
-      portfolio.dailyProfitLoss || 0,
+      portfolio.unrealizedPnL || 0,
       portfolio.overallProfitRate || 0,
       realized?.total || 0,
       db.prepare("SELECT COUNT(*) as cnt FROM analysis WHERE date = ? AND action LIKE '%매도%'").get(today)?.cnt || 0,

@@ -1,4 +1,4 @@
-const { fetchAllRSS } = require('../services/rss');
+const { collectNightNews } = require('../services/rss');
 const { filterNewsBatch } = require('../services/claude-haiku');
 const { sendKakao } = require('../services/kakao');
 const { sendErrorAlert } = require('../services/alert');
@@ -27,7 +27,7 @@ async function runNightMonitor() {
 
     const holdingProxy = holdings.length > 0 ? holdings : [];
 
-    const allNews = await fetchAllRSS();
+    const allNews = await collectNightNews();
     if (!allNews || allNews.length === 0) {
       console.log('[Night] 수집된 뉴스 없음');
       return;
