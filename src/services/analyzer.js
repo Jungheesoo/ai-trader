@@ -254,8 +254,10 @@ async function runAnalysisPipeline(portfolioSummary) {
 
   if (result.triggered && result.analysis) {
     const a = result.analysis;
-    for (const h of holdings) {
-      await sendUrgentAlert(h, a, result.relevantNews || []);
+    // 긴급/매도 신호일 때만 알림, 보유 종목 중 첫 번째 대표 종목으로 발송
+    if (a.action && a.action !== '보유유지' && a.action !== '판단불가') {
+      const repHolding = holdings[0];
+      await sendUrgentAlert(repHolding, a, result.relevantNews || []);
     }
     // DB 저장
     db.prepare(

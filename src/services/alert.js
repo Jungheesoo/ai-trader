@@ -74,7 +74,7 @@ async function sendUrgentAlert(holding, analysis, relevantNews = []) {
   const emoji = isSell ? '⚠️' : '💡';
   const label = isSell ? '[긴급] 전량매도 권고' : '[분석] ' + analysis.action;
 
-  const newsLine = relevantNews[0]?.news?.title || '뉴스 데이터 기반';
+  const newsLine = relevantNews[0]?.title || relevantNews[0]?.news?.title || '뉴스 데이터 기반';
 
   let actionLine = `→ ${analysis.action}`;
   if (analysis.cash_recommendation === '재투자' && analysis.alternative_stock) {
