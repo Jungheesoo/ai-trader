@@ -133,9 +133,10 @@ async function sendChat() {
   el.appendChild(loadingDiv);
   el.scrollTop = el.scrollHeight;
 
-  input.value = '';
   btn.disabled = true;
   isSending = true;
+  input.value = '';
+  input.blur();
 
   try {
     const res = await fetch('/api/chat', {
@@ -169,6 +170,7 @@ async function sendChat() {
   } finally {
     btn.disabled = false;
     isSending = false;
+    input.focus();
     el.scrollTop = el.scrollHeight;
   }
 }

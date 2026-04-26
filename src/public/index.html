@@ -109,7 +109,7 @@ async function loadDashboard() {
     document.getElementById('summary-grid').innerHTML = `
       <div class="summary-item">
         <div class="summary-label">총 운용</div>
-        <div class="summary-value">${Math.round((p.totalAssets||0)/10000)}만원</div>
+        <div class="summary-value">${(p.totalAssets||0).toLocaleString()}원</div>
       </div>
       <div class="summary-item">
         <div class="summary-label">전체 수익</div>
@@ -117,11 +117,11 @@ async function loadDashboard() {
       </div>
       <div class="summary-item">
         <div class="summary-label">보유주식</div>
-        <div class="summary-value">${Math.round((p.stockValue||0)/10000)}만원</div>
+        <div class="summary-value">${(p.stockValue||0).toLocaleString()}원</div>
       </div>
       <div class="summary-item">
         <div class="summary-label">현금</div>
-        <div class="summary-value">${Math.round((p.cash||0)/10000)}만원</div>
+        <div class="summary-value">${(p.cash||0).toLocaleString()}원</div>
       </div>
     `;
 
