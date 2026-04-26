@@ -98,36 +98,52 @@ function formatClosingReport(portfolio, sonnetCount, alertCount, cashHoldCount, 
   const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace('.', '');
   const serverUrl = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
 
-  let msg = `📋 오늘 결산 ${today}\n\n`;
-  msg += `━━━━━━━━━━━━━━\n💰 오늘 손익\n━━━━━━━━━━━━━━\n`;
+  let msg = `📋 AI 트레이더 마감 결산 ${today}\n\n`;
 
+  // ── 오늘 손익
+  msg += `━━━━━━━━━━━━━━\n💰 오늘 손익\n━━━━━━━━━━━━━━\n`;
   if (portfolio.holdings && portfolio.holdings.length > 0) {
     for (const h of portfolio.holdings) {
       const pSign = (h.profitRate || 0) >= 0 ? '+' : '';
-      msg += `${h.stock_name}: ${pSign}${(h.profitRate || 0).toFixed(1)}% (${pSign}${Math.round(h.profitLoss || 0).toLocaleString()}원)\n`;
+      msg += `[${h.stock_name}] ${pSign}${(h.profitRate || 0).toFixed(1)}% / ${pSign}${Math.round(h.profitLoss || 0).toLocaleString()}원\n`;
+      const rsiStr = h.rsi ? `RSI ${h.rsi.toFixed(0)}${h.rsi >= 70 ? '(과매수)' : h.rsi <= 30 ? '(과매도)' : ''}` : '';
+      if (rsiStr) msg += `  ${rsiStr} / MACD: ${h.macd || '-'}\n`;
     }
   }
-
   const totalSign = (portfolio.overallProfitRate || 0) >= 0 ? '+' : '';
-  msg += `총 평가손익: ${totalSign}${Math.round(portfolio.unrealizedPnL || 0).toLocaleString()}원\n`;
-  msg += `누적 수익: ${totalSign}${(portfolio.overallProfitRate || 0).toFixed(1)}%\n\n`;
+  const pnlSign = (portfolio.unrealizedPnL || 0) >= 0 ? '+' : '';
+  msg += `\n총 평가손익: ${pnlSign}${Math.round(portfolio.unrealizedPnL || 0).toLocaleString()}원\n`;
+  msg += `누적 수익률: ${totalSign}${(portfolio.overallProfitRate || 0).toFixed(1)}%\n\n`;
 
-  msg += `━━━━━━━━━━━━━━\n📊 AI 운영 현황\n━━━━━━━━━━━━━━\n`;
-  msg += `Sonnet: ${sonnetCount}회 / 15회\n`;
-  msg += `알림: ${alertCount}건\n`;
+  // ── AI 내일 전망
+  msg += `━━━━━━━━━━━━━━\n🌍 내일 전망 및 전략\n━━━━━━━━━━━━━━\n`;
+  if (ai) {
+    msg += `판단: ${ai.action || '판단불가'} [신뢰도: ${ai.confidence || '?'}]\n\n`;
+    msg += `${ai.reason || '-'}\n\n`;
+    if (ai.why_sell_now) msg += `💰 익절 이유: ${ai.why_sell_now}\n\n`;
+    if (ai.why_hold) msg += `🤚 보유 이유: ${ai.why_hold}\n\n`;
+    if (ai.why_cash) msg += `💵 현금 보유 이유: ${ai.why_cash}\n\n`;
+    if (ai.news_impact) msg += `📰 뉴스 영향: ${ai.news_impact}\n\n`;
+    if (ai.target_price) msg += `🎯 목표가: ${ai.target_price.toLocaleString()}원\n`;
+    if (ai.stop_loss) msg += `🛡 손절가: ${ai.stop_loss.toLocaleString()}원\n`;
+    if (ai.target_price || ai.stop_loss) msg += '\n';
+  }
+
+  // ── 운영 현황
+  msg += `━━━━━━━━━━━━━━\n📊 오늘 AI 운영\n━━━━━━━━━━━━━━\n`;
+  msg += `Sonnet 호출: ${sonnetCount}회 / 15회\n`;
+  msg += `알림 발송: ${alertCount}건\n`;
   msg += `현금 보유 판단: ${cashHoldCount}회\n\n`;
 
-  msg += `━━━━━━━━━━━━━━\n🌍 내일 전망\n━━━━━━━━━━━━━━\n`;
-  if (ai) {
-    msg += `${ai.reason || '-'}\n`;
-    msg += `내일 전략: ${ai.action || '판단불가'}\n`;
+  // ── 주의사항
+  if (isBeforeMonday || ai?.warning || ai?.urgency === '긴급') {
+    msg += `━━━━━━━━━━━━━━\n⚠️ 주의사항\n━━━━━━━━━━━━━━\n`;
+    if (isBeforeMonday) msg += `월요일: 주말 효과 하락 가능, 악재 확인 후 진입\n`;
+    if (ai?.warning) msg += `${ai.warning}\n`;
+    msg += '\n';
   }
-  if (isBeforeMonday) {
-    msg += `⚠️ 월요일: 주말 효과 하락 가능, 악재 확인 후 진입\n`;
-  }
-  if (ai?.warning) msg += `⚠️ ${ai.warning}\n`;
 
-  msg += `\n👉 ${serverUrl}`;
+  msg += `👉 ${serverUrl}`;
   return msg;
 }
 

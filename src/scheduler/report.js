@@ -48,7 +48,7 @@ async function runMorningReport() {
     }
 
     // 리포트 메시지 생성
-    const message = formatMorningReport(portfolio, watchlist, result, isFriday, isMonday);
+    const message = formatMorningReport(portfolio, watchlist, result, isFriday, isMonday, relevantNews);
     await sendKakao(message);
 
     // 분석 결과 DB 저장
@@ -123,58 +123,95 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday) {
   };
 }
 
-function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday) {
+function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relevantNews) {
   const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace('.', '');
   const serverUrl = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
 
   let msg = `📊 AI 트레이더 모닝 리포트 ${today}\n\n`;
-  msg += `━━━━━━━━━━━━━━\n💼 총 자산 현황\n━━━━━━━━━━━━━━\n`;
-  msg += `보유주식: ${Math.round((portfolio.stockValue || 0) / 10000)}만원\n`;
-  msg += `현금: ${Math.round((portfolio.cash || 0) / 10000)}만원\n`;
-  msg += `총 운용: ${Math.round((portfolio.totalAssets || 0) / 10000)}만원\n`;
 
+  // ── 총 자산
   const profitSign = (portfolio.overallProfitRate || 0) >= 0 ? '+' : '';
-  msg += `전체 수익: ${profitSign}${(portfolio.overallProfitRate || 0).toFixed(1)}%\n\n`;
+  const pnl = portfolio.unrealizedPnL || 0;
+  const pnlSign = pnl >= 0 ? '+' : '';
+  msg += `━━━━━━━━━━━━━━\n💼 총 자산 현황\n━━━━━━━━━━━━━━\n`;
+  msg += `총 운용: ${(portfolio.totalAssets || 0).toLocaleString()}원\n`;
+  msg += `평가손익: ${pnlSign}${Math.round(pnl).toLocaleString()}원 (${profitSign}${(portfolio.overallProfitRate || 0).toFixed(1)}%)\n`;
+  msg += `보유주식: ${(portfolio.stockValue || 0).toLocaleString()}원 / 현금: ${(portfolio.cash || 0).toLocaleString()}원\n\n`;
 
+  // ── 종목별 현황
   if (portfolio.holdings && portfolio.holdings.length > 0) {
-    msg += `━━━━━━━━━━━━━━\n📈 종목별 AI 액션\n━━━━━━━━━━━━━━\n`;
+    msg += `━━━━━━━━━━━━━━\n📈 종목별 현황\n━━━━━━━━━━━━━━\n`;
     for (const h of portfolio.holdings) {
       const pSign = (h.profitRate || 0) >= 0 ? '+' : '';
-      msg += `[${h.stock_name}] ${h.quantity}주\n`;
-      msg += `현재가: ${(h.current_price || h.avg_price).toLocaleString()}원 (${pSign}${(h.profitRate || 0).toFixed(1)}%)\n`;
-      msg += `수익: ${pSign}${Math.round(h.profitLoss || 0).toLocaleString()}원\n`;
-      if (h.rsi) msg += `RSI: ${h.rsi.toFixed(0)} / MACD: ${h.macd || '-'}\n`;
-      if (h.trailingStop) msg += `손절가: ${h.trailingStop.toLocaleString()}원 (트레일링)\n`;
-      msg += `→ AI 액션: ${ai.action || '판단불가'}\n`;
-      if (ai.reason) msg += `근거: ${ai.reason}\n`;
+      msg += `[${h.stock_name}] ${h.quantity}주 · 평단 ${(h.avg_price || 0).toLocaleString()}원\n`;
+      msg += `현재가: ${(h.current_price || h.avg_price).toLocaleString()}원 (${pSign}${(h.profitRate || 0).toFixed(1)}%) / 평가손익: ${pSign}${Math.round(h.profitLoss || 0).toLocaleString()}원\n`;
+      const rsiStr = h.rsi ? `RSI ${h.rsi.toFixed(0)}${h.rsi >= 70 ? '(과매수⚠️)' : h.rsi <= 30 ? '(과매도↑)' : ''}` : 'RSI 없음';
+      msg += `${rsiStr} / MACD: ${h.macd || '데이터 없음'}\n`;
+      if (h.foreignNet != null) msg += `외국인: ${h.foreignNet > 0 ? '+' : ''}${h.foreignNet.toLocaleString()}주 / 기관: ${h.institutionNet != null ? (h.institutionNet > 0 ? '+' : '') + h.institutionNet.toLocaleString() + '주' : '데이터 없음'}\n`;
+      if (h.trailingStop) msg += `트레일링 손절가: ${h.trailingStop.toLocaleString()}원\n`;
       msg += '\n';
     }
   }
 
-  msg += `━━━━━━━━━━━━━━\n🌍 글로벌 동향\n━━━━━━━━━━━━━━\n`;
-  msg += `야간 특이사항: ${portfolio.nightIssue || '없음'}\n\n`;
-
-  if (watchlist && watchlist.length > 0) {
-    msg += `━━━━━━━━━━━━━━\n🔍 오늘 주목 종목 TOP3\n━━━━━━━━━━━━━━\n`;
-    watchlist.forEach((w, i) => {
-      msg += `${i + 1}. ${w.stock_name} / RSI: ${(w.rsi || 0).toFixed(0)} / MACD: ${w.macd || '-'}\n`;
+  // ── 뉴스
+  msg += `━━━━━━━━━━━━━━\n📰 주요 뉴스 분석\n━━━━━━━━━━━━━━\n`;
+  if (relevantNews && relevantNews.length > 0) {
+    relevantNews.slice(0, 5).forEach((n, i) => {
+      const icon = n.urgency === '긴급' ? '🔴' : n.impact === '긍정' ? '🟢' : n.impact === '부정' ? '🔴' : '🟡';
+      msg += `${icon} ${n.title}\n`;
+      if (n.reason) msg += `   → ${n.reason}\n`;
     });
-    if (ai.alternative_stock) {
-      msg += `추천: ${ai.alternative_stock}`;
-      if (ai.target_price) msg += ` / 목표가 ${ai.target_price.toLocaleString()}원`;
-      if (ai.stop_loss) msg += ` / 손절가 ${ai.stop_loss.toLocaleString()}원`;
-      msg += '\n';
-    }
+  } else {
+    msg += `특이 뉴스 없음\n`;
+  }
+  if (ai.news_impact) msg += `\nAI 뉴스 종합: ${ai.news_impact}\n`;
+  msg += '\n';
+
+  // ── AI 판단
+  msg += `━━━━━━━━━━━━━━\n🤖 AI 최종 판단\n━━━━━━━━━━━━━━\n`;
+  msg += `판단: ${ai.action || '판단불가'} [신뢰도: ${ai.confidence || '?'}]\n\n`;
+  msg += `근거:\n${ai.reason || '-'}\n\n`;
+
+  // 액션별 상세 이유
+  if (ai.why_sell_now) msg += `💰 지금 익절하는 이유:\n${ai.why_sell_now}\n\n`;
+  if (ai.why_hold) msg += `🤚 보유 유지 이유:\n${ai.why_hold}\n\n`;
+  if (ai.why_switch) msg += `🔄 종목 교체 이유:\n${ai.why_switch}\n\n`;
+  if (ai.why_cash) msg += `💵 현금 보유 이유:\n${ai.why_cash}\n\n`;
+
+  if (ai.target_price) msg += `🎯 목표가: ${ai.target_price.toLocaleString()}원\n`;
+  if (ai.stop_loss) msg += `🛡 손절가: ${ai.stop_loss.toLocaleString()}원\n`;
+  if (ai.target_price || ai.stop_loss) msg += '\n';
+
+  // 대체 종목
+  if (ai.alternative_stock) {
+    msg += `━━━━━━━━━━━━━━\n🔍 대체 종목 추천\n━━━━━━━━━━━━━━\n`;
+    msg += `${ai.alternative_stock}`;
+    if (ai.target_price) msg += ` / 목표가 ${ai.target_price.toLocaleString()}원`;
+    if (ai.stop_loss) msg += ` / 손절가 ${ai.stop_loss.toLocaleString()}원`;
+    if (ai.why_switch) msg += `\n사유: ${ai.why_switch}`;
+    msg += '\n\n';
+  }
+
+  // watchlist
+  if (watchlist && watchlist.length > 0) {
+    msg += `━━━━━━━━━━━━━━\n👀 주목 종목 TOP3\n━━━━━━━━━━━━━━\n`;
+    watchlist.forEach((w, i) => {
+      msg += `${i + 1}. ${w.stock_name} — RSI ${(w.rsi || 0).toFixed(0)} / MACD: ${w.macd || '-'}\n`;
+    });
     msg += '\n';
   }
 
-  msg += `━━━━━━━━━━━━━━\n💡 오늘 액션 플랜\n━━━━━━━━━━━━━━\n`;
-  msg += `${ai.action || '판단불가'}: ${ai.reason || '-'}\n`;
-  if (isFriday) msg += `⚠️ 오늘 금요일: 오후 2시 이후 신규 진입 자제\n`;
-  if (isMonday) msg += `⚠️ 오늘 월요일: 주말 효과 하락 가능, 악재 확인 후 진입\n`;
-  if (ai.warning) msg += `⚠️ ${ai.warning}\n`;
+  // 주의사항
+  if (isFriday || isMonday || ai.warning || ai.urgency === '긴급') {
+    msg += `━━━━━━━━━━━━━━\n⚠️ 주의사항\n━━━━━━━━━━━━━━\n`;
+    if (ai.urgency === '긴급') msg += `🔴 긴급 상황 — 즉시 확인 필요\n`;
+    if (isFriday) msg += `금요일: 오후 2시 이후 신규 진입 자제\n`;
+    if (isMonday) msg += `월요일: 주말 효과 하락 가능, 악재 확인 후 진입\n`;
+    if (ai.warning) msg += `${ai.warning}\n`;
+    msg += '\n';
+  }
 
-  msg += `\n👉 ${serverUrl}`;
+  msg += `👉 ${serverUrl}/portfolio.html`;
   return msg;
 }
 
