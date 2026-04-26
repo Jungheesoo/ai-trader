@@ -10,12 +10,12 @@
 
 <div class="header">
   <div>
-    <div style="font-size:16px;font-weight:600;">📊 분석 이력</div>
-    <div class="subtitle">AI 추천 이력 및 성과</div>
+    <div class="header-title">📊 분석 이력</div>
+    <div class="header-sub">AI 추천 이력 및 성과</div>
   </div>
 </div>
 
-<div class="stat-grid" style="margin-top:12px">
+<div class="stat-grid" style="margin-top:16px">
   <div class="stat-item">
     <div class="stat-value positive" id="accuracy-rate">-</div>
     <div class="stat-label">AI 적중률</div>
@@ -70,13 +70,12 @@ async function loadPerformance() {
         ? (((last.total_assets - first.total_assets) / first.total_assets) * 100).toFixed(1)
         : 0;
       const sign = rate >= 0 ? '+' : '';
-      document.getElementById('seed-growth').textContent = sign + rate + '%';
-      document.getElementById('seed-growth').className = 'stat-value ' + (rate >= 0 ? 'positive' : 'negative');
+      const el = document.getElementById('seed-growth');
+      el.textContent = sign + rate + '%';
+      el.className = 'stat-value ' + (rate >= 0 ? 'positive' : 'negative');
     }
 
     document.getElementById('sell-count').textContent = d.sell_count || 0;
-
-    // 시드 차트 (간이 텍스트형)
     renderSeedChart(d.seed_growth || []);
   } catch(e) {}
 }
@@ -84,22 +83,34 @@ async function loadPerformance() {
 function renderSeedChart(data) {
   const el = document.getElementById('seed-chart');
   if (!data.length) {
-    el.innerHTML = '<div class="empty-state" style="padding:16px 0"><div>데이터 없음</div></div>';
+    el.innerHTML = `<div class="empty-state" style="padding:16px 0">
+      <div class="icon">📉</div>
+      <div class="desc">시드 이력 없음</div>
+    </div>`;
     return;
   }
-  const rows = data.slice(-10).map(d => {
-    const sign = (d.daily_profit_loss_rate || 0) >= 0 ? '+' : '';
-    const cls = (d.daily_profit_loss_rate || 0) >= 0 ? 'positive' : 'negative';
+  el.innerHTML = data.slice(-10).map(d => {
+    const rate = d.daily_profit_loss_rate || 0;
+    const sign = rate >= 0 ? '+' : '';
+    const cls = rate >= 0 ? 'positive' : 'negative';
+    const barWidth = Math.min(100, Math.abs(rate) * 10);
+    const barColor = rate >= 0 ? 'var(--green)' : 'var(--red)';
     return `<div class="history-item">
-      <div class="history-date">${d.date}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
-        <span style="font-size:14px;font-weight:600">${Math.round((d.total_assets||0)/10000)}만원</span>
-        <span class="${cls}" style="font-size:12px">${sign}${(d.daily_profit_loss_rate||0).toFixed(1)}%</span>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="history-date">${d.date}</div>
+          <div style="font-size:15px;font-weight:700;margin-top:2px">${(d.total_assets||0).toLocaleString()}원</div>
+        </div>
+        <div style="text-align:right">
+          <div class="${cls}" style="font-size:14px;font-weight:700">${sign}${rate.toFixed(1)}%</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">익절 ${d.sell_count||0} · 현금보유 ${d.cash_hold_count||0}</div>
+        </div>
       </div>
-      <div style="font-size:11px;color:var(--text-muted)">익절 ${d.sell_count||0}회 · 현금보유 ${d.cash_hold_count||0}회</div>
+      <div style="height:3px;border-radius:2px;background:var(--border);margin-top:8px;overflow:hidden">
+        <div style="height:100%;width:${barWidth}%;background:${barColor};border-radius:2px"></div>
+      </div>
     </div>`;
   }).join('');
-  el.innerHTML = rows || '<div class="empty-state" style="padding:16px 0"><div>데이터 없음</div></div>';
 }
 
 async function loadHistory() {
@@ -109,27 +120,53 @@ async function loadHistory() {
     const el = document.getElementById('history-list');
 
     if (!json.ok || !json.data.length) {
-      el.innerHTML = '<div class="empty-state" style="padding:16px 0"><div>분석 이력 없음</div></div>';
+      el.innerHTML = `<div class="empty-state" style="padding:16px 0">
+        <div class="icon">🤖</div>
+        <div class="title">분석 이력 없음</div>
+        <div class="desc">AI 분석이 실행되면 여기에 표시됩니다</div>
+      </div>`;
       return;
     }
 
     el.innerHTML = json.data.map(h => {
-      let actionCls = 'action-hold';
-      if ((h.action||'').includes('매도')) actionCls = 'action-sell';
-      else if ((h.action||'').includes('매수')) actionCls = 'action-buy';
+      let actionCls = 'hold', actionColor = 'action-hold';
+      if ((h.action||'').includes('매도')) { actionCls = 'sell'; actionColor = 'action-sell'; }
+      else if ((h.action||'').includes('매수')) { actionCls = 'buy'; actionColor = 'action-buy'; }
 
       let resultBadge = '';
-      if (h.actual_result === 'correct') resultBadge = '<span class="badge badge-green" style="float:right">적중</span>';
-      else if (h.actual_result === 'incorrect') resultBadge = '<span class="badge badge-red" style="float:right">미적중</span>';
-      else resultBadge = `<button class="btn btn-secondary btn-sm" style="float:right;padding:3px 8px;font-size:11px" onclick="markResult(${h.id}, this)">결과 입력</button>`;
+      if (h.actual_result === 'correct') {
+        resultBadge = '<span class="badge badge-green">적중</span>';
+      } else if (h.actual_result === 'incorrect') {
+        resultBadge = '<span class="badge badge-red">미적중</span>';
+      } else {
+        resultBadge = `<button class="btn btn-secondary btn-sm" style="padding:3px 10px;font-size:11px" onclick="markResult(${h.id}, this)">결과 입력</button>`;
+      }
 
-      const conf = h.confidence ? `<span class="badge ${h.confidence==='높음'?'badge-green':h.confidence==='보통'?'badge-yellow':'badge-red'}">${h.confidence}</span>` : '';
+      const conf = h.confidence
+        ? `<span class="badge ${h.confidence==='높음'?'badge-green':h.confidence==='보통'?'badge-yellow':'badge-red'}">${h.confidence}</span>`
+        : '';
+
+      const timeStr = h.created_at
+        ? new Date(h.created_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})
+        : '';
+
+      const reason = (h.reason||'-').substring(0, 90) + ((h.reason||'').length > 90 ? '…' : '');
 
       return `<div class="history-item" id="hi-${h.id}">
-        <div class="history-date">${h.date} ${h.created_at ? new Date(h.created_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}) : ''} · ${h.stock_name||'-'} ${conf}</div>
-        <div class="history-action ${actionCls}">${h.action||'-'} ${resultBadge}</div>
-        <div class="history-reason">${(h.reason||'-').substring(0,80)}${(h.reason||'').length>80?'...':''}</div>
-        ${h.target_price ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">목표가 ${h.target_price.toLocaleString()}원 · 손절가 ${(h.stop_loss||0).toLocaleString()}원</div>` : ''}
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <span class="history-date">${h.date}${timeStr ? ' · ' + timeStr : ''}</span>
+          ${h.stock_name ? `<span style="font-size:11px;font-weight:600;color:var(--text)">${h.stock_name}</span>` : ''}
+          ${conf}
+          <span style="margin-left:auto">${resultBadge}</span>
+        </div>
+        <div class="ai-action ${actionCls}" style="margin-top:0">
+          <span class="action-label ${actionColor}">${h.action||'-'}</span>
+          <span style="color:var(--text-muted);font-size:12px">${reason}</span>
+        </div>
+        ${h.target_price ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;display:flex;gap:12px">
+          <span>🎯 목표가 <strong style="color:var(--text)">${h.target_price.toLocaleString()}원</strong></span>
+          ${h.stop_loss ? `<span>🛡 손절가 <strong style="color:var(--text)">${h.stop_loss.toLocaleString()}원</strong></span>` : ''}
+        </div>` : ''}
       </div>`;
     }).join('');
   } catch(e) {}
@@ -150,8 +187,8 @@ async function markResult(id, btn) {
       if (row) {
         const old = row.querySelector('button');
         if (old) old.outerHTML = val === 'correct'
-          ? '<span class="badge badge-green" style="float:right">적중</span>'
-          : '<span class="badge badge-red" style="float:right">미적중</span>';
+          ? '<span class="badge badge-green">적중</span>'
+          : '<span class="badge badge-red">미적중</span>';
       }
     }
   } catch(e) {}

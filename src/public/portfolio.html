@@ -10,17 +10,17 @@
 
 <div class="header">
   <div>
-    <div style="font-size:16px;font-weight:600;">💼 자산현황 입력</div>
-    <div class="subtitle" id="deadline-label"></div>
+    <div class="header-title">💼 자산현황 입력</div>
+    <div class="header-sub" id="deadline-label"></div>
   </div>
 </div>
 
 <div id="status-banner"></div>
 
-<div class="card">
+<div class="card" style="margin-top:16px">
   <div class="card-title">보유 종목</div>
   <div id="holdings-container"></div>
-  <button class="btn btn-secondary btn-sm" id="add-btn" style="margin-top:8px" onclick="addHolding()">+ 종목 추가</button>
+  <button class="btn btn-secondary btn-sm" style="margin-top:4px" onclick="addHolding()">+ 종목 추가</button>
 </div>
 
 <div class="card">
@@ -37,14 +37,12 @@
   </div>
 </div>
 
-<div style="margin:0 16px 16px">
+<div style="margin:0 16px 8px">
   <button class="btn btn-primary" id="save-btn" onclick="savePortfolio()">저장 및 AI 분석 시작</button>
 </div>
 
-<div style="padding:0 16px;margin-bottom:16px">
-  <div style="font-size:11px;color:var(--text-muted)">
-    💡 종목 약어: 삼전, 하이닉스, 카카오, 네이버, 현대차, 기아, 두산에너, 삼바, 한화에어, 셀트리온, LG에너지, 포스코
-  </div>
+<div class="tip-box">
+  💡 <strong>종목 약어:</strong> 삼전, 하이닉스, 카카오, 네이버, 현대차, 기아, 두산에너, 삼바, 한화에어, 셀트리온, LG에너지, 포스코
 </div>
 
 <nav class="nav-bottom">
@@ -125,9 +123,8 @@ async function savePortfolio() {
     });
     const json = await res.json();
     if (!json.ok) throw new Error(json.error);
-
     showBanner('success', '✅ 저장 완료! AI 분석이 시작되었습니다. 카카오톡 알림을 확인해주세요.');
-    btn.textContent = '저장 완료';
+    btn.textContent = '저장 완료 ✓';
     setTimeout(() => { window.location.href = '/'; }, 2000);
   } catch (e) {
     showBanner('error', '저장 실패: ' + e.message);
@@ -142,7 +139,6 @@ function showBanner(type, msg) {
   el.innerHTML = `<div class="${cls}">${msg}</div>`;
 }
 
-// 마감 시간 표시
 function setDeadline() {
   const now = new Date();
   const h = now.getHours(), m = now.getMinutes();
@@ -151,14 +147,13 @@ function setDeadline() {
     el.textContent = '⏰ 8시 10분까지 입력해주세요';
     el.style.color = 'var(--red)';
   } else if (h === 8 && m >= 10) {
-    el.textContent = '입력 마감. 저장 가능합니다.';
+    el.textContent = '입력 마감 — 저장은 가능합니다';
   } else {
     el.textContent = '오늘 자산현황 입력';
   }
 }
 setDeadline();
 
-// 기존 데이터 로드
 async function loadExisting() {
   try {
     const res = await fetch('/api/portfolio/holdings');
@@ -166,10 +161,8 @@ async function loadExisting() {
     if (json.ok && json.data.length > 0) {
       json.data.forEach(h => addHolding(h));
     } else {
-      // 초기 기본값 (두산에너빌리티)
       addHolding({ stock_name: '두산에너빌리티', quantity: 11, avg_price: 116418 });
     }
-    // 현금 로드
     const res2 = await fetch('/api/portfolio');
     const json2 = await res2.json();
     if (json2.ok && json2.data) {

@@ -6,22 +6,21 @@
 <title>AI 질문 - AI 트레이더</title>
 <link rel="stylesheet" href="/style.css">
 <style>
-  body { padding-bottom: 120px; }
-  .chat-wrap { padding-top: 8px; }
+  body { padding-bottom: 130px; }
 </style>
 </head>
 <body>
 
 <div class="header">
   <div>
-    <div style="font-size:16px;font-weight:600;">🤖 AI 질문</div>
-    <div class="subtitle" id="sonnet-status-label">Sonnet 로딩 중...</div>
+    <div class="header-title">🤖 AI 질문</div>
+    <div class="header-sub" id="sonnet-status-label">로딩 중...</div>
   </div>
 </div>
 
 <div id="chat-limit-banner"></div>
 
-<div class="chat-wrap" id="chat-messages"></div>
+<div id="chat-messages" style="min-height:200px;padding-top:8px"></div>
 
 <div class="chat-input-area">
   <input type="text" id="chat-input" placeholder="종목 분석, 매매 판단 질문..." maxlength="200">
@@ -45,14 +44,14 @@ async function loadSonnetStatus() {
     if (json.ok) {
       const d = json.data;
       sonnetRemaining = d.remaining;
-      document.getElementById('sonnet-status-label').textContent = `Sonnet ${d.used}/15회 사용`;
+      document.getElementById('sonnet-status-label').textContent = `오늘 ${d.used}/15회 사용 · 잔여 ${d.remaining}회`;
       if (!d.allowed) {
         document.getElementById('chat-limit-banner').innerHTML =
-          '<div class="alert-banner">⚠️ ' + (d.reason || 'Sonnet 호출 한도 초과') + '</div>';
+          '<div class="alert-banner">⚠️ ' + (d.reason || 'AI 호출 한도 초과') + '</div>';
         document.getElementById('send-btn').disabled = true;
       } else if (d.remaining <= 3) {
         document.getElementById('chat-limit-banner').innerHTML =
-          '<div class="warning-banner">⚠️ Sonnet 잔여 ' + d.remaining + '회. 긴급 상황에 사용하세요.</div>';
+          '<div class="warning-banner">⚠️ AI 잔여 ' + d.remaining + '회 — 긴급 상황에만 사용하세요.</div>';
       }
     }
   } catch(e) {}
@@ -62,8 +61,8 @@ async function loadHistory() {
   try {
     const res = await fetch('/api/chat/history');
     const json = await res.json();
+    const el = document.getElementById('chat-messages');
     if (json.ok && json.data.length > 0) {
-      const el = document.getElementById('chat-messages');
       json.data.reverse().forEach(h => {
         const q = h.reason.replace('[사용자 질문] ', '').split(' | ')[0];
         el.appendChild(makeBubble(q, 'user'));
@@ -71,8 +70,11 @@ async function loadHistory() {
       });
       el.scrollTop = el.scrollHeight;
     } else {
-      document.getElementById('chat-messages').innerHTML =
-        '<div class="empty-state" style="padding:40px 16px"><div class="icon">🤖</div><div>궁금한 점을 질문해보세요</div><div style="font-size:11px;color:var(--text-muted);margin-top:8px">현재 포트폴리오 데이터를 바탕으로 AI가 분석합니다</div></div>';
+      el.innerHTML = `<div class="empty-state">
+        <div class="icon">🤖</div>
+        <div class="title">궁금한 점을 질문해보세요</div>
+        <div class="desc">현재 포트폴리오 데이터를 바탕으로 AI가 분석합니다</div>
+      </div>`;
     }
   } catch(e) {}
 }
@@ -94,15 +96,18 @@ function makeAIBubble(data) {
   if ((data.action||'').includes('매도')) actionCls = 'action-sell';
   else if ((data.action||'').includes('매수')) actionCls = 'action-buy';
 
-  let html = `<div class="action ${actionCls}">${data.action || '판단불가'}</div>`;
   const reason = (data.reason||'').replace(/\[사용자 질문\][^|]*\|\s*/, '');
+  let html = `<div class="action ${actionCls}">${data.action || '판단불가'}</div>`;
   html += `<div class="reason">${reason || '-'}</div>`;
   if (data.target_price) {
-    html += `<div style="font-size:11px;margin-top:6px;color:var(--text-muted)">목표가: ${data.target_price.toLocaleString()}원`;
-    if (data.stop_loss) html += ` · 손절가: ${data.stop_loss.toLocaleString()}원`;
-    html += '</div>';
+    html += `<div style="font-size:12px;margin-top:8px;display:flex;gap:12px;color:var(--text-muted)">
+      <span>🎯 목표가 <strong style="color:var(--text)">${data.target_price.toLocaleString()}원</strong></span>
+      ${data.stop_loss ? `<span>🛡 손절가 <strong style="color:var(--text)">${data.stop_loss.toLocaleString()}원</strong></span>` : ''}
+    </div>`;
   }
-  if (data.warning) html += `<div style="font-size:11px;margin-top:4px;color:var(--yellow)">⚠️ ${data.warning}</div>`;
+  if (data.warning) {
+    html += `<div style="font-size:12px;margin-top:6px;color:var(--yellow)">⚠️ ${data.warning}</div>`;
+  }
   div.innerHTML = html;
   return div;
 }
@@ -115,12 +120,11 @@ async function sendChat() {
   const q = input.value.trim();
   if (!q) return;
   if (sonnetRemaining <= 0) {
-    alert('오늘 Sonnet 한도를 모두 사용했습니다.');
+    alert('오늘 AI 한도를 모두 사용했습니다.');
     return;
   }
 
   const el = document.getElementById('chat-messages');
-  // 빈 상태 제거
   const empty = el.querySelector('.empty-state');
   if (empty) empty.remove();
 
@@ -129,7 +133,7 @@ async function sendChat() {
   const loadingDiv = document.createElement('div');
   loadingDiv.className = 'chat-bubble ai';
   loadingDiv.style.margin = '4px 16px 8px';
-  loadingDiv.innerHTML = '<div class="spinner" style="width:16px;height:16px;margin:0"></div>';
+  loadingDiv.innerHTML = '<div class="spinner" style="width:18px;height:18px;margin:2px 0 0"></div>';
   el.appendChild(loadingDiv);
   el.scrollTop = el.scrollHeight;
 
@@ -157,7 +161,7 @@ async function sendChat() {
     } else {
       el.appendChild(makeAIBubble(json.data));
       sonnetRemaining--;
-      document.getElementById('sonnet-status-label').textContent = `Sonnet ${15-sonnetRemaining}/15회 사용`;
+      document.getElementById('sonnet-status-label').textContent = `오늘 ${15-sonnetRemaining}/15회 사용 · 잔여 ${sonnetRemaining}회`;
     }
   } catch(e) {
     el.removeChild(loadingDiv);
@@ -165,7 +169,7 @@ async function sendChat() {
     errDiv.className = 'chat-bubble ai';
     errDiv.style.margin = '4px 16px 8px';
     errDiv.style.color = 'var(--red)';
-    errDiv.textContent = '네트워크 오류';
+    errDiv.textContent = '네트워크 오류가 발생했습니다.';
     el.appendChild(errDiv);
   } finally {
     btn.disabled = false;

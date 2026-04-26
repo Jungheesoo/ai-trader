@@ -10,21 +10,23 @@
 
 <div class="header">
   <div>
-    <div class="header h1" style="font-size:16px;font-weight:600;">📈 AI 트레이더</div>
-    <div class="subtitle" id="today-date"></div>
+    <div class="header-title">📈 AI 트레이더</div>
+    <div class="header-sub" id="today-date"></div>
   </div>
   <div class="market-status" id="market-status"></div>
 </div>
 
 <div id="day-warning"></div>
 
-<div class="card">
+<!-- 총 자산 -->
+<div class="card" style="margin-top:16px">
   <div class="card-title">총 자산 현황</div>
-  <div class="summary-grid" id="summary-grid">
+  <div id="summary-grid">
     <div class="loading"><div class="spinner"></div></div>
   </div>
 </div>
 
+<!-- 보유 종목 -->
 <div class="card">
   <div class="card-title">보유 종목</div>
   <div id="holdings-list">
@@ -32,17 +34,19 @@
   </div>
 </div>
 
+<!-- AI 분석 요약 -->
 <div class="card">
-  <div class="card-title">오늘 AI 분석 요약</div>
+  <div class="card-title">오늘 AI 분석</div>
   <div id="ai-summary">
     <div class="loading"><div class="spinner"></div></div>
   </div>
 </div>
 
+<!-- 통계 -->
 <div class="stat-grid">
   <div class="stat-item">
     <div class="stat-value" id="sonnet-count">-</div>
-    <div class="stat-label">Sonnet 사용</div>
+    <div class="stat-label">AI 사용 횟수</div>
   </div>
   <div class="stat-item">
     <div class="stat-value" id="alert-count">-</div>
@@ -63,15 +67,15 @@
 
 <script>
 const today = new Date();
-document.getElementById('today-date').textContent = today.toLocaleDateString('ko-KR', {year:'numeric',month:'long',day:'numeric',weekday:'short'});
+document.getElementById('today-date').textContent =
+  today.toLocaleDateString('ko-KR', {year:'numeric',month:'long',day:'numeric',weekday:'long'});
 
 function getMarketStatus() {
   const h = today.getHours(), m = today.getMinutes();
-  const total = h * 60 + m;
-  const day = today.getDay();
+  const total = h * 60 + m, day = today.getDay();
   if (day === 0 || day === 6) return {status:'closed', label:'주말 휴장'};
-  if (total >= 9*60 && total < 15*60+30) return {status:'open', label:'장 중'};
-  if (total >= 8*60 && total < 9*60) return {status:'pre', label:'장 전'};
+  if (total >= 540 && total < 930) return {status:'open', label:'장 중'};
+  if (total >= 480 && total < 540) return {status:'pre', label:'장 전'};
   return {status:'closed', label:'장 마감'};
 }
 
@@ -84,17 +88,19 @@ function renderMarketStatus() {
 }
 renderMarketStatus();
 
-// 요일별 경고
 function renderDayWarning() {
   const day = today.getDay();
   const el = document.getElementById('day-warning');
   if (day === 5) {
-    el.innerHTML = '<div class="warning-banner">⚠️ 오늘 금요일: 오후 2시 이후 신규 진입 자제. 주말 효과 대비.</div>';
+    el.innerHTML = '<div class="warning-banner">⚠️ 금요일 — 오후 2시 이후 신규 진입 자제. 주말 효과 대비하세요.</div>';
   } else if (day === 1) {
-    el.innerHTML = '<div class="info-banner">📌 오늘 월요일: 주말 효과 하락 가능. 급락 시 악재 여부 먼저 확인.</div>';
+    el.innerHTML = '<div class="info-banner">📌 월요일 — 주말 효과 하락 가능. 급락 시 악재 여부를 먼저 확인하세요.</div>';
   }
 }
 renderDayWarning();
+
+function fmt(n) { return n == null ? '-' : Math.round(n).toLocaleString(); }
+function fmtRate(r) { return r == null ? '-' : (r >= 0 ? '+' : '') + r.toFixed(1) + '%'; }
 
 async function loadDashboard() {
   try {
@@ -103,61 +109,74 @@ async function loadDashboard() {
     if (!json.ok) throw new Error(json.error);
     const p = json.data;
 
-    // 요약
-    const sign = (p.overallProfitRate || 0) >= 0 ? '+' : '';
-    const cls = (p.overallProfitRate || 0) >= 0 ? 'positive' : 'negative';
+    // 총 자산
+    const rateSign = (p.overallProfitRate || 0) >= 0 ? '+' : '';
+    const rateCls = (p.overallProfitRate || 0) >= 0 ? 'positive' : 'negative';
+    const pnl = p.unrealizedPnL || 0;
+    const pnlSign = pnl >= 0 ? '+' : '';
+    const pnlCls = pnl >= 0 ? 'positive' : 'negative';
+
     document.getElementById('summary-grid').innerHTML = `
-      <div class="summary-item">
-        <div class="summary-label">총 운용</div>
-        <div class="summary-value">${(p.totalAssets||0).toLocaleString()}원</div>
+      <div style="margin-bottom:16px">
+        <div class="summary-label">총 운용 자산</div>
+        <div class="pnl-big" style="margin-top:4px">${fmt(p.totalAssets)}원</div>
+        <div style="font-size:13px;margin-top:4px" class="${pnlCls}">${pnlSign}${fmt(pnl)}원 (${rateSign}${(p.overallProfitRate||0).toFixed(1)}%)</div>
       </div>
-      <div class="summary-item">
-        <div class="summary-label">전체 수익</div>
-        <div class="summary-value ${cls}">${sign}${(p.overallProfitRate||0).toFixed(1)}%</div>
-      </div>
-      <div class="summary-item">
-        <div class="summary-label">보유주식</div>
-        <div class="summary-value">${(p.stockValue||0).toLocaleString()}원</div>
-      </div>
-      <div class="summary-item">
-        <div class="summary-label">현금</div>
-        <div class="summary-value">${(p.cash||0).toLocaleString()}원</div>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="summary-label">보유 주식</div>
+          <div class="summary-value small">${fmt(p.stockValue)}원</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">현금</div>
+          <div class="summary-value small">${fmt(p.cash)}원</div>
+        </div>
       </div>
     `;
 
     // 보유 종목
     const holdingsEl = document.getElementById('holdings-list');
     if (!p.holdings || p.holdings.length === 0) {
-      holdingsEl.innerHTML = '<div class="empty-state"><div class="icon">📭</div><div>보유 종목 없음</div><div style="margin-top:8px"><a href="/portfolio.html">자산 입력하기</a></div></div>';
+      holdingsEl.innerHTML = `<div class="empty-state">
+        <div class="icon">📭</div>
+        <div class="title">보유 종목 없음</div>
+        <div class="desc"><a href="/portfolio.html">자산 입력하기</a></div>
+      </div>`;
     } else {
       holdingsEl.innerHTML = p.holdings.map(h => {
         const pr = h.profitRate || 0;
         const pSign = pr >= 0 ? '+' : '';
         const pCls = pr >= 0 ? 'positive' : 'negative';
-        const rsi = h.rsi ? h.rsi.toFixed(0) : '-';
-        const rsiColor = h.rsi >= 70 ? '#dc2626' : h.rsi <= 30 ? '#16a34a' : '#2563eb';
+        const rsi = h.rsi != null ? h.rsi.toFixed(0) : null;
+        const rsiCls = h.rsi >= 70 ? 'danger' : h.rsi <= 30 ? 'safe' : '';
+        const rsiColor = h.rsi >= 70 ? 'var(--red)' : h.rsi <= 30 ? 'var(--green)' : 'var(--blue)';
         const rsiPct = h.rsi ? Math.min(100, h.rsi) : 50;
-        let actionCls = 'action-hold', actionLabel = h.lastAction || '-';
-        if (actionLabel.includes('매도')) actionCls = 'action-sell';
-        else if (actionLabel.includes('매수')) actionCls = 'action-buy';
-        return `
-          <div class="stock-row">
-            <div class="stock-row-flex">
-              <div>
-                <div class="stock-name">${h.stock_name}</div>
-                <div class="stock-meta">${h.quantity}주 · 평단 ${(h.avg_price||0).toLocaleString()}원</div>
-              </div>
-              <div class="stock-price">
-                <div class="price">${(h.current_price||h.avg_price||0).toLocaleString()}원</div>
-                <div class="rate ${pCls}">${pSign}${pr.toFixed(1)}%</div>
-              </div>
+        const macd = h.macd || null;
+        const macdCls = macd === '데드크로스' ? 'danger' : macd === '골든크로스' ? 'safe' : '';
+
+        let actionCls = 'hold', actionText = h.lastAction || '';
+        if (actionText.includes('매도')) actionCls = 'sell';
+        else if (actionText.includes('매수')) actionCls = 'buy';
+
+        return `<div class="stock-row">
+          <div class="stock-row-flex">
+            <div>
+              <div class="stock-name">${h.stock_name}</div>
+              <div class="stock-meta">${h.quantity}주 &nbsp;·&nbsp; 평단 ${fmt(h.avg_price)}원</div>
             </div>
-            <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
-              RSI: <span style="color:${rsiColor}">${rsi}</span> · MACD: ${h.macd||'-'}
-              <div class="rsi-bar"><div class="rsi-fill" style="width:${rsiPct}%;background:${rsiColor}"></div></div>
+            <div class="stock-price">
+              <div class="price">${fmt(h.current_price || h.avg_price)}원</div>
+              <div class="rate ${pCls}">${pSign}${pr.toFixed(1)}%</div>
             </div>
-            ${actionLabel !== '-' ? `<div class="ai-action"><span class="action-label ${actionCls}">→ ${actionLabel}</span>${h.lastReason ? `<span style="color:var(--text-muted)">${h.lastReason}</span>` : ''}</div>` : ''}
-          </div>`;
+          </div>
+          <div class="tech-row">
+            ${rsi != null ? `<span class="tech-chip ${rsiCls}">RSI ${rsi}</span>` : ''}
+            ${macd ? `<span class="tech-chip ${macdCls}">MACD ${macd}</span>` : ''}
+            ${h.isBackup ? '<span class="tech-chip warn">네이버 백업</span>' : ''}
+          </div>
+          ${rsi != null ? `<div class="rsi-bar" style="margin-top:8px"><div class="rsi-fill" style="width:${rsiPct}%;background:${rsiColor}"></div></div>` : ''}
+          ${actionText ? `<div class="ai-action ${actionCls}"><span class="action-label action-${actionCls}">→ ${actionText}</span>${h.lastReason ? `<span style="color:var(--text-muted);font-size:11px">&nbsp;${h.lastReason}</span>` : ''}</div>` : ''}
+        </div>`;
       }).join('');
     }
 
@@ -165,41 +184,49 @@ async function loadDashboard() {
     const aiEl = document.getElementById('ai-summary');
     if (p.latestAnalysis) {
       const a = p.latestAnalysis;
-      let aCls = 'action-hold';
-      if ((a.action||'').includes('매도')) aCls = 'action-sell';
-      else if ((a.action||'').includes('매수')) aCls = 'action-buy';
+      let aCls = 'hold';
+      if ((a.action||'').includes('매도')) aCls = 'sell';
+      else if ((a.action||'').includes('매수')) aCls = 'buy';
+      const timeStr = a.created_at ? new Date(a.created_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}) : '';
       aiEl.innerHTML = `
-        <div style="font-size:15px;font-weight:700" class="${aCls}">${a.action || '-'}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">${a.reason || '-'}</div>
-        ${a.target_price ? `<div style="font-size:12px;margin-top:6px">목표가: <strong>${a.target_price.toLocaleString()}원</strong> · 손절가: <strong>${(a.stop_loss||0).toLocaleString()}원</strong></div>` : ''}
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">${new Date(a.created_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="font-size:17px;font-weight:800" class="action-${aCls}">${a.action || '-'}</div>
+          ${a.confidence ? `<span class="badge ${a.confidence==='높음'?'badge-green':a.confidence==='보통'?'badge-yellow':'badge-red'}">${a.confidence}</span>` : ''}
+          <span style="font-size:11px;color:var(--text-muted);margin-left:auto">${timeStr}</span>
+        </div>
+        <div style="font-size:13px;color:var(--text-muted);line-height:1.6">${a.reason || '-'}</div>
+        ${a.target_price ? `<div style="margin-top:10px;font-size:12px;display:flex;gap:16px">
+          <span>🎯 목표가 <strong>${fmt(a.target_price)}원</strong></span>
+          ${a.stop_loss ? `<span>🛡 손절가 <strong>${fmt(a.stop_loss)}원</strong></span>` : ''}
+        </div>` : ''}
       `;
     } else {
-      aiEl.innerHTML = '<div class="empty-state" style="padding:16px 0"><div>아직 AI 분석 없음</div></div>';
+      aiEl.innerHTML = `<div class="empty-state" style="padding:16px 0">
+        <div class="desc">아직 AI 분석이 없습니다</div>
+      </div>`;
     }
   } catch (e) {
-    document.getElementById('holdings-list').innerHTML = '<div class="empty-state"><div>데이터 로드 실패</div><div style="font-size:11px;color:var(--text-muted)">' + e.message + '</div></div>';
+    document.getElementById('holdings-list').innerHTML =
+      `<div class="empty-state"><div class="desc">데이터 로드 실패: ${e.message}</div></div>`;
   }
 }
 
 async function loadStats() {
   try {
-    const res = await fetch('/api/chat/sonnet-status');
-    const json = await res.json();
-    if (json.ok) {
-      document.getElementById('sonnet-count').textContent = `${json.data.used}/15`;
+    const [r1, r2, r3] = await Promise.all([
+      fetch('/api/chat/sonnet-status'),
+      fetch('/api/history/alerts'),
+      fetch('/api/history?limit=30')
+    ]);
+    const [j1, j2, j3] = await Promise.all([r1.json(), r2.json(), r3.json()]);
+    if (j1.ok) document.getElementById('sonnet-count').textContent = `${j1.data.used}/15`;
+    if (j2.ok) document.getElementById('alert-count').textContent = j2.data.length;
+    if (j3.ok) {
+      const today = new Date().toISOString().slice(0,10);
+      const cnt = j3.data.filter(a => a.cash_recommendation === '현금보유' && a.date === today).length;
+      document.getElementById('cash-hold-count').textContent = cnt;
     }
-    const res2 = await fetch('/api/history/alerts');
-    const json2 = await res2.json();
-    if (json2.ok) document.getElementById('alert-count').textContent = json2.data.length;
-
-    const res3 = await fetch('/api/history?limit=30');
-    const json3 = await res3.json();
-    if (json3.ok) {
-      const cashHolds = json3.data.filter(a => a.cash_recommendation === '현금보유' && a.date === new Date().toISOString().slice(0,10));
-      document.getElementById('cash-hold-count').textContent = cashHolds.length;
-    }
-  } catch (e) { /* silent */ }
+  } catch(e) {}
 }
 
 loadDashboard();
