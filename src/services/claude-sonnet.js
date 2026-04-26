@@ -2,7 +2,7 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'
 const axios = require('axios');
 const { canCallSonnet, recordSonnetCall, getSonnetRemainingToday } = require('./guard');
 
-const MODEL = process.env.CLAUDE_SONNET_MODEL || 'claude-sonnet-4-20250514';
+const MODEL = process.env.CLAUDE_SONNET_MODEL || 'claude-sonnet-4-5';
 const API_KEY = process.env.CLAUDE_API_KEY;
 
 const SYSTEM_PROMPT = `당신은 한국 주식 분석 AI입니다.
