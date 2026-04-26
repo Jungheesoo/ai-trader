@@ -8,25 +8,28 @@ const TOKEN_FILE = path.resolve(__dirname, '../../data/kis_token.json');
 
 let kisToken = null;
 let tokenExpiry = 0;
+let isRefreshing = false;
+let nextRetryAt = 0;
 
 function loadTokenFromFile() {
   try {
     if (!fs.existsSync(TOKEN_FILE)) return;
     const data = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8'));
-    if (data.token && data.expiry && Date.now() < data.expiry) {
-      kisToken = data.token;
-      tokenExpiry = data.expiry;
+    if (data.access_token && data.expires_at && Date.now() < data.expires_at) {
+      kisToken = data.access_token;
+      tokenExpiry = data.expires_at;
+      console.log('[KIS] 파일에서 토큰 로드 성공 (만료까지', Math.round((tokenExpiry - Date.now()) / 60000), '분)');
     }
   } catch {
     // 파일 읽기 실패 시 무시하고 새로 발급
   }
 }
 
-function saveTokenToFile(token, expiry) {
+function saveTokenToFile(token, expiresAt) {
   try {
     const dir = path.dirname(TOKEN_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(TOKEN_FILE, JSON.stringify({ token, expiry }), 'utf8');
+    fs.writeFileSync(TOKEN_FILE, JSON.stringify({ access_token: token, expires_at: expiresAt }), 'utf8');
   } catch {
     // 저장 실패해도 메모리 토큰으로 계속 동작
   }
@@ -35,7 +38,22 @@ function saveTokenToFile(token, expiry) {
 loadTokenFromFile();
 
 async function getToken() {
+  // 메모리 토큰 유효하면 바로 반환
   if (kisToken && Date.now() < tokenExpiry) return kisToken;
+
+  // 60초 내 실패한 적 있으면 대기
+  if (Date.now() < nextRetryAt) {
+    console.warn('[KIS] 토큰 발급 대기 중 (', Math.round((nextRetryAt - Date.now()) / 1000), '초 후 재시도)');
+    return null;
+  }
+
+  // 중복 발급 방지
+  if (isRefreshing) {
+    await new Promise(r => setTimeout(r, 2000));
+    return kisToken;
+  }
+
+  isRefreshing = true;
   const appKey = process.env.KIS_APP_KEY;
   const appSecret = process.env.KIS_APP_SECRET;
   const baseUrl = process.env.KIS_BASE_URL || 'https://openapi.koreainvestment.com:9443';
@@ -54,10 +72,14 @@ async function getToken() {
     kisToken = res.data.access_token;
     tokenExpiry = Date.now() + (res.data.expires_in - 60) * 1000;
     saveTokenToFile(kisToken, tokenExpiry);
+    console.log('[KIS] 토큰 발급 성공');
     return kisToken;
   } catch (err) {
     console.error('[KIS] 토큰 발급 실패:', err.message);
+    nextRetryAt = Date.now() + 60000; // 60초 후 재시도
     return null;
+  } finally {
+    isRefreshing = false;
   }
 }
 
