@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 const axios = require('axios');
 
 const BASE_URL = process.env.KIS_BASE_URL || 'https://openapi.koreainvestment.com:9443';
