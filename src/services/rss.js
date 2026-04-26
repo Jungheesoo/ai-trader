@@ -7,21 +7,19 @@ const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)';
 
 const RSS_SOURCES = {
   domestic: [
-    { name: '연합뉴스경제', url: 'https://www.yna.co.kr/RSS/economy.xml' },
-    { name: '연합뉴스증권', url: 'https://www.yna.co.kr/RSS/stock.xml' },
     { name: '한국경제', url: 'https://www.hankyung.com/feed/finance' },
     { name: '매일경제', url: 'https://www.mk.co.kr/rss/30000001/' },
-    { name: '머니투데이', url: 'https://www.mt.co.kr/rss/news/news_list.xml' }
+    { name: '연합뉴스경제', url: 'https://www.yna.co.kr/rss/economy.xml' },
+    { name: '연합뉴스증권', url: 'https://www.yna.co.kr/rss/stock.xml' }
   ],
   global: [
-    { name: 'Reuters한국', url: 'https://feeds.reuters.com/reuters/KORTopNews' },
     { name: '트럼프관세', url: 'https://news.google.com/rss/search?q=Trump+tariff&hl=en&gl=US&ceid=US:en' },
     { name: '트럼프한국', url: 'https://news.google.com/rss/search?q=Trump+Korea&hl=en&gl=US&ceid=US:en' },
     { name: 'Fed금리', url: 'https://news.google.com/rss/search?q=Fed+interest+rate&hl=en&gl=US&ceid=US:en' },
     { name: '나스닥', url: 'https://news.google.com/rss/search?q=NASDAQ&hl=en&gl=US&ceid=US:en' },
-    { name: '반도체', url: 'https://news.google.com/rss/search?q=semiconductor+Korea&hl=ko&gl=KR&ceid=KR:ko' },
-    { name: '원전두산', url: 'https://news.google.com/rss/search?q=원전+두산&hl=ko&gl=KR&ceid=KR:ko' },
-    { name: '방산', url: 'https://news.google.com/rss/search?q=방산+한국&hl=ko&gl=KR&ceid=KR:ko' }
+    { name: '반도체', url: 'https://news.google.com/rss/search?q=semiconductor+Korea&hl=en&gl=US&ceid=US:en' },
+    { name: '원전두산', url: 'https://news.google.com/rss/search?q=Doosan+nuclear&hl=en&gl=US&ceid=US:en' },
+    { name: '방산', url: 'https://news.google.com/rss/search?q=Korea+defense+industry&hl=en&gl=US&ceid=US:en' }
   ],
   investing: [
     { name: 'investing전체', url: 'https://www.investing.com/rss/news.rss' },
