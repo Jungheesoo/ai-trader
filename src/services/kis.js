@@ -93,9 +93,14 @@ async function requestWithRetry(fn, retries = 3) {
     try {
       return await fn();
     } catch (err) {
-      console.error(`[KIS] 요청 실패 (${i + 1}/${retries}):`, err.message);
-      // 토큰 발급 자체가 실패(403/401)면 재시도 무의미
+      const status = err.response?.status;
+      // 재시도 무의미한 케이스: 즉시 포기
       if (err.message === '토큰 없음') return null;
+      if (status === 500 || status === 403 || status === 401) {
+        console.warn(`[KIS] 서버 오류 ${status} - 재시도 생략`);
+        return null;
+      }
+      console.error(`[KIS] 요청 실패 (${i + 1}/${retries}):`, err.message);
       if (i < retries - 1) await delay(delays[i]);
     }
   }
