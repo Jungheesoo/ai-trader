@@ -15,9 +15,7 @@ axios.get('https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quota
   timeout: 10000
 }).then(function(r) {
   var o = r.data.output;
-  console.log('stck_prpr(현재가):', o.stck_prpr);
-  console.log('stck_clpr(종가)  :', o.stck_clpr);
-  console.log('prdy_clpr(전일종가):', o.prdy_clpr);
+  console.log(JSON.stringify(o, null, 2));
 }).catch(function(e) {
   console.error(e.message);
 });
