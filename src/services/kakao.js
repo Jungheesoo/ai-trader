@@ -5,7 +5,7 @@ const { getDb } = require('../db/database');
 const MAX_PER_DAY = parseInt(process.env.MAX_KAKAO_ALERTS_PER_DAY) || 15;
 let accessToken = process.env.KAKAO_ACCESS_TOKEN;
 let refreshToken = process.env.KAKAO_REFRESH_TOKEN;
-let tokenExpiry = Date.now() + 6 * 60 * 60 * 1000;
+let tokenExpiry = 0;
 
 function getToday() {
   return new Date().toISOString().slice(0, 10);

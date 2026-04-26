@@ -24,10 +24,11 @@ async function fetchUsMarketStatus() {
           timeout: 8000
         });
         const $ = cheerio.load(res.data);
-        // Google Finance 등락률 셀렉터
+        // Google Finance 등락률 셀렉터 ("Up by 1.23%" / "Down by 1.23%" 형식)
         const changeText = $('[jsname="Fe7oBc"]').first().attr('aria-label') || '';
-        const match = changeText.match(/([-+]?\d+\.?\d*)\s*%/);
-        const changeRate = match ? parseFloat(match[1]) : null;
+        const numMatch = changeText.match(/(\d+\.?\d*)\s*%/);
+        const isDown = /down/i.test(changeText);
+        const changeRate = numMatch ? parseFloat(numMatch[1]) * (isDown ? -1 : 1) : null;
         results.push({ name: idx.name, changeRate });
       } catch {
         results.push({ name: idx.name, changeRate: null });

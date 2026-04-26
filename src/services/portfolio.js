@@ -99,8 +99,8 @@ async function enrichHoldingsWithPrices(holdings) {
       macdLine: stockData?.macd?.macdLine || null,
       volumeRatio: stockData?.volumeRatio || null,
       trailingStop: stockData?.trailingStop || null,
-      foreignNet: stockData?.investor?.foreignNet || null,
-      institutionNet: stockData?.investor?.institutionNet || null,
+      foreignNet: stockData?.investor?.foreignNet ?? null,
+      institutionNet: stockData?.investor?.institutionNet ?? null,
       changeRate: stockData?.changeRate || null,
       isBackup: stockData?.source === 'naver_backup',
       isDelayed: stockData?.delayed || false

@@ -14,6 +14,10 @@
   --red-bg: #fee2e2;
   --blue: #2563eb;
   --blue-bg: #dbeafe;
+  --up: #dc2626;
+  --up-bg: #fee2e2;
+  --down: #1d4ed8;
+  --down-bg: #dbeafe;
   --yellow: #d97706;
   --yellow-bg: #fef3c7;
   --orange: #ea580c;
@@ -197,9 +201,9 @@ a { color: var(--blue); text-decoration: none; }
 .market-pre .market-dot { background: var(--yellow); }
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(5,150,105,0.2); } 50% { box-shadow: 0 0 0 5px rgba(5,150,105,0.1); } }
 
-/* ── Colors ── */
-.positive { color: var(--green); }
-.negative { color: var(--red); }
+/* ── Colors (한국 주식 기준: 상승=빨간색, 하락=파란색) ── */
+.positive { color: var(--up); }
+.negative { color: var(--down); }
 .neutral { color: var(--text-muted); }
 
 /* ── Banners ── */

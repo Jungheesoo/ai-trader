@@ -108,11 +108,11 @@ async function runScan() {
         await delay(100);
         const [priceData, chartData, investorData] = await Promise.all([
           getCurrentPrice(stock.code),
-          getDailyChart(stock.code, 30),
+          getDailyChart(stock.code, 60),
           getInvestorData(stock.code)
         ]);
 
-        if (!priceData || !chartData || chartData.length < 15) continue;
+        if (!priceData || !chartData || chartData.length < 29) continue;
 
         const closes = chartData.map(d => d.close);
         const volumes = chartData.map(d => d.volume);

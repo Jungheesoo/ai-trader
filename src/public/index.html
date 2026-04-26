@@ -149,7 +149,7 @@ async function loadDashboard() {
         const pCls = pr >= 0 ? 'positive' : 'negative';
         const rsi = h.rsi != null ? h.rsi.toFixed(0) : null;
         const rsiCls = h.rsi >= 70 ? 'danger' : h.rsi <= 30 ? 'safe' : '';
-        const rsiColor = h.rsi >= 70 ? 'var(--red)' : h.rsi <= 30 ? 'var(--green)' : 'var(--blue)';
+        const rsiColor = h.rsi >= 70 ? 'var(--up)' : h.rsi <= 30 ? 'var(--down)' : 'var(--accent)';
         const rsiPct = h.rsi ? Math.min(100, h.rsi) : 50;
         const macd = h.macd || null;
         const macdCls = macd === '데드크로스' ? 'danger' : macd === '골든크로스' ? 'safe' : '';

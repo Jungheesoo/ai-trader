@@ -127,7 +127,7 @@ async function callSonnet(userPrompt, callerTag = '') {
       'https://api.anthropic.com/v1/messages',
       {
         model: MODEL,
-        max_tokens: 1024,
+        max_tokens: 2048,
         temperature: 0,
         system: SYSTEM_PROMPT,
         messages

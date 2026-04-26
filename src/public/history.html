@@ -94,7 +94,7 @@ function renderSeedChart(data) {
     const sign = rate >= 0 ? '+' : '';
     const cls = rate >= 0 ? 'positive' : 'negative';
     const barWidth = Math.min(100, Math.abs(rate) * 10);
-    const barColor = rate >= 0 ? 'var(--green)' : 'var(--red)';
+    const barColor = rate >= 0 ? 'var(--up)' : 'var(--down)';
     return `<div class="history-item">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>

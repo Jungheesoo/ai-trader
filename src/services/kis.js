@@ -205,15 +205,30 @@ function getDateBefore(days) {
 
 // 기술적 지표 계산 (코드에서 직접 계산 - Claude에 계산 요청 금지)
 function calculateRSI(closes, period = 14) {
-  if (closes.length < period + 1) return null;
-  let gains = 0, losses = 0;
-  for (let i = closes.length - period; i < closes.length; i++) {
+  // Wilder's Smoothed RSI — 표준 HTS와 동일한 결과
+  if (!closes || closes.length < period * 2 + 1) return null;
+
+  // 첫 번째 평균 손익 (시드값)
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
     const diff = closes[i] - closes[i - 1];
-    if (diff > 0) gains += diff;
-    else losses += Math.abs(diff);
+    if (diff > 0) avgGain += diff;
+    else avgLoss += Math.abs(diff);
   }
-  if (losses === 0) return 100;
-  const rs = (gains / period) / (losses / period);
+  avgGain /= period;
+  avgLoss /= period;
+
+  // Wilder's 스무딩: 이후 데이터에 지수 평균 적용
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? Math.abs(diff) : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+  }
+
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
   return Math.round(100 - (100 / (1 + rs)));
 }
 

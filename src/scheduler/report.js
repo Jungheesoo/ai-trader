@@ -25,10 +25,11 @@ async function runMorningReport() {
     ).all(today);
 
     // RSS 수집 후 Haiku 필터링 (최대 30건)
+    const watchlistNames = watchlist.map(w => w.stock_name).filter(Boolean);
     let relevantNews = [];
     try {
       const allNews = await fetchAllRSS();
-      const filtered = await filterNewsBatch(allNews.slice(0, 30), portfolio.holdings);
+      const filtered = await filterNewsBatch(allNews.slice(0, 30), portfolio.holdings, watchlistNames);
       relevantNews = filtered.filter(n => n.relevant);
     } catch (e) {
       console.warn('[Report] 뉴스 수집 실패:', e.message);
