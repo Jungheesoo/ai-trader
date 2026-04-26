@@ -1,12 +1,38 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 const BASE_URL = process.env.KIS_BASE_URL || 'https://openapi.koreainvestment.com:9443';
-const APP_KEY = process.env.KIS_APP_KEY;
-const APP_SECRET = process.env.KIS_APP_SECRET;
+const TOKEN_FILE = path.resolve(__dirname, '../../data/kis_token.json');
 
 let kisToken = null;
 let tokenExpiry = 0;
+
+function loadTokenFromFile() {
+  try {
+    if (!fs.existsSync(TOKEN_FILE)) return;
+    const data = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8'));
+    if (data.token && data.expiry && Date.now() < data.expiry) {
+      kisToken = data.token;
+      tokenExpiry = data.expiry;
+    }
+  } catch {
+    // 파일 읽기 실패 시 무시하고 새로 발급
+  }
+}
+
+function saveTokenToFile(token, expiry) {
+  try {
+    const dir = path.dirname(TOKEN_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(TOKEN_FILE, JSON.stringify({ token, expiry }), 'utf8');
+  } catch {
+    // 저장 실패해도 메모리 토큰으로 계속 동작
+  }
+}
+
+loadTokenFromFile();
 
 async function getToken() {
   if (kisToken && Date.now() < tokenExpiry) return kisToken;
@@ -27,6 +53,7 @@ async function getToken() {
     });
     kisToken = res.data.access_token;
     tokenExpiry = Date.now() + (res.data.expires_in - 60) * 1000;
+    saveTokenToFile(kisToken, tokenExpiry);
     return kisToken;
   } catch (err) {
     console.error('[KIS] 토큰 발급 실패:', err.message);
