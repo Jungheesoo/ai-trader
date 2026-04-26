@@ -28,11 +28,11 @@
   <div class="form-row">
     <div class="form-group">
       <label class="form-label">현금 보유액 (원)</label>
-      <input class="form-input" type="number" id="cash-input" placeholder="0" inputmode="numeric">
+      <input class="form-input num-input" type="text" inputmode="numeric" id="cash-input" placeholder="0">
     </div>
     <div class="form-group">
       <label class="form-label">신규 투입 가능 (원)</label>
-      <input class="form-input" type="number" id="new-invest-input" placeholder="0" inputmode="numeric">
+      <input class="form-input num-input" type="text" inputmode="numeric" id="new-invest-input" placeholder="0">
     </div>
   </div>
 </div>
@@ -70,20 +70,43 @@ function addHolding(data = {}) {
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">보유 수량 (주)</label>
-        <input class="form-input" type="number" placeholder="0" value="${data.quantity||''}" id="${id}-qty" inputmode="numeric">
+        <input class="form-input num-input" type="text" inputmode="numeric" placeholder="0" value="${data.quantity ? Number(data.quantity).toLocaleString() : ''}" id="${id}-qty">
       </div>
       <div class="form-group">
         <label class="form-label">평균 단가 (원)</label>
-        <input class="form-input" type="number" placeholder="0" value="${data.avg_price||''}" id="${id}-price" inputmode="numeric">
+        <input class="form-input num-input" type="text" inputmode="numeric" placeholder="0" value="${data.avg_price ? Number(data.avg_price).toLocaleString() : ''}" id="${id}-price">
       </div>
     </div>
   `;
   document.getElementById('holdings-container').appendChild(div);
+  div.querySelectorAll('.num-input').forEach(attachNumFormat);
 }
 
 function removeHolding(id) {
   const el = document.getElementById(id);
   if (el) el.remove();
+}
+
+function parseNum(val) {
+  return parseFloat(String(val).replace(/,/g, '')) || 0;
+}
+
+function formatNum(val) {
+  const n = parseFloat(String(val).replace(/,/g, ''));
+  if (isNaN(n) || val === '' || val === '-') return val;
+  return Math.floor(n).toLocaleString();
+}
+
+function attachNumFormat(el) {
+  el.addEventListener('input', function() {
+    const raw = this.value.replace(/,/g, '').replace(/[^0-9]/g, '');
+    if (raw === '') { this.value = ''; return; }
+    const pos = this.selectionStart;
+    const prevCommas = (this.value.slice(0, pos).match(/,/g) || []).length;
+    this.value = Number(raw).toLocaleString();
+    const newCommas = (this.value.slice(0, pos).match(/,/g) || []).length;
+    try { this.setSelectionRange(pos + newCommas - prevCommas, pos + newCommas - prevCommas); } catch(e) {}
+  });
 }
 
 function getHoldings() {
@@ -95,7 +118,7 @@ function getHoldings() {
     const qty = document.getElementById(id+'-qty').value;
     const price = document.getElementById(id+'-price').value;
     if (name && qty && price) {
-      result.push({ stock_name: name, quantity: parseInt(qty), avg_price: parseFloat(price) });
+      result.push({ stock_name: name, quantity: parseInt(parseNum(qty)), avg_price: parseNum(price) });
     }
   });
   return result;
@@ -104,8 +127,8 @@ function getHoldings() {
 async function savePortfolio() {
   const btn = document.getElementById('save-btn');
   const holdings = getHoldings();
-  const cash = parseFloat(document.getElementById('cash-input').value) || 0;
-  const newInvestment = parseFloat(document.getElementById('new-invest-input').value) || 0;
+  const cash = parseNum(document.getElementById('cash-input').value) || 0;
+  const newInvestment = parseNum(document.getElementById('new-invest-input').value) || 0;
 
   if (holdings.length === 0) {
     showBanner('error', '보유 종목을 1개 이상 입력해주세요.');
@@ -166,14 +189,16 @@ async function loadExisting() {
     const res2 = await fetch('/api/portfolio');
     const json2 = await res2.json();
     if (json2.ok && json2.data) {
-      if (json2.data.cash) document.getElementById('cash-input').value = json2.data.cash;
-      if (json2.data.newInvestment) document.getElementById('new-invest-input').value = json2.data.newInvestment;
+      if (json2.data.cash) document.getElementById('cash-input').value = Number(json2.data.cash).toLocaleString();
+      if (json2.data.newInvestment) document.getElementById('new-invest-input').value = Number(json2.data.newInvestment).toLocaleString();
     }
   } catch(e) {
     addHolding({ stock_name: '두산에너빌리티', quantity: 11, avg_price: 116418 });
   }
 }
 loadExisting();
+attachNumFormat(document.getElementById('cash-input'));
+attachNumFormat(document.getElementById('new-invest-input'));
 </script>
 </body>
 </html>

@@ -1,4 +1,5 @@
 const { getDb } = require('../db/database');
+const { getTodayKST } = require('./dateutil');
 
 const SONNET_MIN_INTERVAL_MS = (parseInt(process.env.CLAUDE_SONNET_MIN_INTERVAL_SECONDS) || 60) * 1000;
 const SONNET_MAX_PER_HOUR = parseInt(process.env.CLAUDE_SONNET_MAX_CALLS_PER_HOUR) || 3;
@@ -9,7 +10,7 @@ let hourCallCount = 0;
 let currentHour = -1;
 
 function getToday() {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayKST();
 }
 
 function getCurrentHour() {

@@ -3,6 +3,7 @@ const { filterNewsBatch } = require('./claude-haiku');
 const { getMinutesUntilClose, isFridayAfternoon, isOneHourBeforeClose } = require('./portfolio');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const { getTodayKST } = require('./dateutil');
 
 async function fetchUsMarketStatus() {
   try {
@@ -286,7 +287,7 @@ async function runAnalysisPipeline(portfolioSummary) {
   }
 
   const db = getDb();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayKST();
   const holdings = portfolioSummary.holdings || [];
   if (holdings.length === 0) return;
 

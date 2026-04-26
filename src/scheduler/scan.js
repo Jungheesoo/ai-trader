@@ -2,6 +2,7 @@ const { getDb } = require('../db/database');
 const { getCurrentPrice, getDailyChart, getInvestorData, calculateRSI, calculateMACD, calculateVolumeRatio } = require('../services/kis');
 const { isWeekday } = require('../services/holiday');
 const { sendErrorAlert } = require('../services/alert');
+const { getTodayKST } = require('../services/dateutil');
 
 let isRunning = false;
 
@@ -98,7 +99,7 @@ async function runScan() {
   try {
     console.log('[Scan] 전체 종목 퀀트 스캔 시작');
     const db = getDb();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayKST();
     db.prepare('DELETE FROM watchlist WHERE date = ?').run(today);
 
     const results = [];

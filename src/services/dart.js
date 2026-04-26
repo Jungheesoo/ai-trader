@@ -1,6 +1,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 const axios = require('axios');
 const { getDb } = require('../db/database');
+const { getTodayKST, nowKST } = require('./dateutil');
 
 const API_KEY = process.env.DART_API_KEY;
 
@@ -66,8 +67,8 @@ function classifyDisclosure(disclosure) {
 async function getDisclosures(corpCode, days = 1) {
   if (!API_KEY) return [];
   try {
-    const endDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const start = new Date();
+    const endDate = getTodayKST().replace(/-/g, '');
+    const start = nowKST();
     start.setDate(start.getDate() - days);
     const startDate = start.toISOString().slice(0, 10).replace(/-/g, '');
 
@@ -110,13 +111,13 @@ async function getCorpCode(stockName) {
 
 function isNewDisclosure(rcpNo) {
   const db = getDb();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayKST();
   return !db.prepare('SELECT id FROM news_cache WHERE date = ? AND url = ?').get(today, rcpNo);
 }
 
 function markDisclosureSeen(rcpNo, title) {
   const db = getDb();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayKST();
   db.prepare(
     'INSERT OR IGNORE INTO news_cache (date, source, title, url) VALUES (?, ?, ?, ?)'
   ).run(today, 'DART', title, rcpNo);

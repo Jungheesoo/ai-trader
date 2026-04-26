@@ -5,6 +5,7 @@ const { sendErrorAlert } = require('../services/alert');
 const { getDb } = require('../db/database');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const { getTodayKST } = require('../services/dateutil');
 
 let isRunning = false;
 
@@ -52,7 +53,7 @@ async function runNightMonitor() {
   try {
     console.log('[Night] 야간 미국 시장 모니터링 시작 (Sonnet 호출 없음)');
     const db = getDb();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayKST();
 
     // 보유 종목 로드
     const holdings = db.prepare(

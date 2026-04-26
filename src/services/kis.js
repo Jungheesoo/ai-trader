@@ -2,6 +2,7 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { getTodayKST, nowKST } = require('./dateutil');
 
 const BASE_URL = process.env.KIS_BASE_URL || 'https://openapi.koreainvestment.com:9443';
 const TOKEN_FILE = path.resolve(__dirname, '../../data/kis_token.json');
@@ -143,7 +144,7 @@ async function getDailyChart(stockCode, days = 60) {
     const token = await getToken();
     if (!token) throw new Error('토큰 없음');
     await delay(100);
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const today = getTodayKST().replace(/-/g, '');
     const res = await axios.get(`${BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice`, {
       params: {
         FID_COND_MRKT_DIV_CODE: 'J',
@@ -198,7 +199,7 @@ async function getInvestorData(stockCode) {
 }
 
 function getDateBefore(days) {
-  const d = new Date();
+  const d = nowKST();
   d.setDate(d.getDate() - days);
   return d.toISOString().slice(0, 10).replace(/-/g, '');
 }

@@ -1,6 +1,7 @@
 const { getDb } = require('../db/database');
 const { sendKakao } = require('../services/kakao');
 const { sendErrorAlert } = require('../services/alert');
+const { nowKST } = require('../services/dateutil');
 
 // Sonnet 호출 없음 - DB 이력만으로 계산
 async function runWeeklyReport() {
@@ -10,7 +11,7 @@ async function runWeeklyReport() {
 
   try {
     const db = getDb();
-    const today = new Date();
+    const today = nowKST();
     const monday = new Date(today);
     monday.setDate(today.getDate() - 6);
 

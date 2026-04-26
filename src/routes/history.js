@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db/database');
+const { getTodayKST } = require('../services/dateutil');
 
 // GET /api/history - 분석 이력 (날짜별)
 router.get('/', (req, res) => {
@@ -98,7 +99,7 @@ router.get('/alerts', (req, res) => {
   try {
     const db = getDb();
     const { date } = req.query;
-    const today = date || new Date().toISOString().slice(0, 10);
+    const today = date || getTodayKST();
 
     const alerts = db.prepare(
       'SELECT * FROM alerts WHERE date = ? ORDER BY sent_at DESC'

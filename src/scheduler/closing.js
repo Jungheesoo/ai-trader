@@ -4,6 +4,7 @@ const { sendKakao } = require('../services/kakao');
 const { isWeekday } = require('../services/holiday');
 const { sendErrorAlert } = require('../services/alert');
 const { getPortfolioSummary } = require('../services/portfolio');
+const { getTodayKST } = require('../services/dateutil');
 
 async function runClosingReport() {
   if (!isWeekday(new Date())) return;
@@ -11,7 +12,7 @@ async function runClosingReport() {
 
   try {
     const db = getDb();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayKST();
     const portfolio = await getPortfolioSummary();
 
     // 오늘 AI 호출 횟수

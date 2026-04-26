@@ -4,6 +4,7 @@ const { getDb } = require('../db/database');
 const { callSonnet } = require('../services/claude-sonnet');
 const { getPortfolioSummary } = require('../services/portfolio');
 const { canCallSonnet } = require('../services/guard');
+const { getTodayKST } = require('../services/dateutil');
 
 // POST /api/chat - AI 질문
 router.post('/', async (req, res) => {
@@ -19,7 +20,7 @@ router.post('/', async (req, res) => {
     }
 
     const portfolio = await getPortfolioSummary();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayKST();
 
     const prompt = {
       user_question: question.trim(),
@@ -79,7 +80,7 @@ router.post('/', async (req, res) => {
 router.get('/history', (req, res) => {
   try {
     const db = getDb();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayKST();
 
     const history = db.prepare(
       "SELECT * FROM analysis WHERE date = ? AND reason LIKE '[사용자 질문]%' ORDER BY created_at DESC LIMIT 20"

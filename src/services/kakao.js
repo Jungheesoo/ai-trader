@@ -1,6 +1,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 const axios = require('axios');
 const { getDb } = require('../db/database');
+const { getTodayKST } = require('./dateutil');
 
 const MAX_PER_DAY = parseInt(process.env.MAX_KAKAO_ALERTS_PER_DAY) || 15;
 let accessToken = process.env.KAKAO_ACCESS_TOKEN;
@@ -8,7 +9,7 @@ let refreshToken = process.env.KAKAO_REFRESH_TOKEN;
 let tokenExpiry = 0;
 
 function getToday() {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayKST();
 }
 
 function getTodayCount() {

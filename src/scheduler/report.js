@@ -7,6 +7,7 @@ const { fetchAllRSS } = require('../services/rss');
 const { filterNewsBatch } = require('../services/claude-haiku');
 const { checkNewDisclosures } = require('../services/dart');
 const { sendErrorAlert } = require('../services/alert');
+const { getTodayKST } = require('../services/dateutil');
 
 async function runMorningReport() {
   if (!isWeekday(new Date())) return;
@@ -14,7 +15,7 @@ async function runMorningReport() {
 
   try {
     const db = getDb();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayKST();
 
     // 포트폴리오 요약 계산
     const portfolio = await getPortfolioSummary();

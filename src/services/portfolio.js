@@ -1,6 +1,7 @@
 const { getDb } = require('../db/database');
 const { getFullStockData } = require('./kis');
 const { getNaverFinancePrice } = require('./naver');
+const { getTodayKST } = require('./dateutil');
 
 // KIS 연속 실패 카운터 (프롬프트 섹션 8-4)
 let kisFailCount = 0;
@@ -8,7 +9,7 @@ let kisBackupMode = false;
 let kisBackupAlertSent = false;
 
 function getToday() {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayKST();
 }
 
 function getTodayHoldings() {

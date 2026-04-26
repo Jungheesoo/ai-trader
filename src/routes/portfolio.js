@@ -3,6 +3,7 @@ const router = express.Router();
 const { getDb } = require('../db/database');
 const { saveHoldings, savePortfolioInput, getPortfolioSummary } = require('../services/portfolio');
 const { runAnalysisPipeline } = require('../services/analyzer');
+const { getTodayKST } = require('../services/dateutil');
 
 // 종목 약어 사전
 const STOCK_ALIASES = {
@@ -46,7 +47,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { holdings, cash, newInvestment } = req.body;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayKST();
 
     if (!Array.isArray(holdings) || holdings.length === 0) {
       return res.status(400).json({ ok: false, error: '보유 종목을 입력해주세요.' });
@@ -90,7 +91,7 @@ router.post('/', async (req, res) => {
 router.get('/holdings', (req, res) => {
   try {
     const db = getDb();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayKST();
     let holdings = db.prepare('SELECT * FROM holdings WHERE date = ? ORDER BY id').all(today);
     if (!holdings.length) {
       const lastDate = db.prepare('SELECT MAX(date) as d FROM holdings').get();
