@@ -23,15 +23,22 @@ const LUNAR_HOLIDAYS_2026 = [
 
 const ALL_LUNAR_HOLIDAYS = [...LUNAR_HOLIDAYS_2025, ...LUNAR_HOLIDAYS_2026];
 
+function toKSTDateString(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().slice(0, 10);
+}
+
 function isHoliday(date) {
   const d = date instanceof Date ? date : new Date(date);
-  const dayOfWeek = d.getDay();
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const dayOfWeek = kst.getUTCDay();
   if (dayOfWeek === 0 || dayOfWeek === 6) return true;
 
-  const mmdd = d.toISOString().slice(5, 10);
+  const yyyy_mm_dd = kst.toISOString().slice(0, 10);
+  const mmdd = yyyy_mm_dd.slice(5, 10);
   if (FIXED_HOLIDAYS.includes(mmdd)) return true;
 
-  const yyyy_mm_dd = d.toISOString().slice(0, 10);
   if (ALL_LUNAR_HOLIDAYS.includes(yyyy_mm_dd)) return true;
 
   return false;
