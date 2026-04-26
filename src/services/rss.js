@@ -10,7 +10,7 @@ const RSS_SOURCES = {
     { name: '한국경제', url: 'https://www.hankyung.com/feed/finance' },
     { name: '매일경제', url: 'https://www.mk.co.kr/rss/30000001/' },
     { name: '연합뉴스경제', url: 'https://www.yna.co.kr/rss/economy.xml' },
-    { name: '연합뉴스증권', url: 'https://www.yna.co.kr/rss/stock.xml' }
+    { name: '연합뉴스증권', url: 'https://www.yna.co.kr/rss/market.xml' }
   ],
   global: [
     { name: '트럼프관세', url: 'https://news.google.com/rss/search?q=Trump+tariff&hl=en&gl=US&ceid=US:en' },
