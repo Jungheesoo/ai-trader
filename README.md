@@ -1,7 +1,7 @@
 # AI 트레이더 시스템
 
 나만을 위한 완전 자동화 AI 트레이더. Node.js + SQLite + Claude API.
-Oracle Cloud 서버에서 24시간 자동 운영. 카카오톡으로 알림.
+Google Cloud 서버에서 24시간 자동 운영. 카카오톡으로 알림.
 
 ---
 
@@ -23,15 +23,15 @@ AI 3단계 구조:
 
 ---
 
-## 2. Oracle Cloud ARM 서버 생성
+## 2. Google Cloud VM 생성
 
-1. https://cloud.oracle.com 접속 → 계정 생성 (Visa/Mastercard 필요)
-2. **서울 리전(ap-seoul-1)** 선택 필수
-3. Compute → Instances → Create Instance
-4. Shape: **Ampere A1** (Always Free) → 4 OCPU / 24GB RAM
-5. OS: Ubuntu 22.04
-6. SSH 키 생성 및 저장 (분실 시 접속 불가)
-7. 서버 생성 후 Public IP 메모
+1. https://console.cloud.google.com 접속 → 계정 생성 (Visa/Mastercard 필요)
+2. Compute Engine → **인스턴스 만들기**
+3. 리전: **asia-northeast3 (서울)** 선택 필수
+4. 머신 유형: **e2-micro** (무료 티어 해당)
+5. OS: Ubuntu 22.04 LTS, 부팅 디스크 30GB
+6. 방화벽: HTTP/HTTPS 트래픽 허용 체크
+7. 서버 생성 후 **외부 IP 주소 메모** → 이것이 `SERVER_IP`
 
 ---
 
@@ -53,8 +53,8 @@ sudo ufw allow 3000
 sudo ufw allow 22
 sudo ufw enable
 
-# Oracle Cloud 콘솔에서도 보안 규칙 추가 필요:
-# Networking → VCN → Security List → Ingress Rules → TCP 3000 허용
+# Google Cloud Console에서도 방화벽 규칙 추가 필요:
+# VPC 네트워크 → 방화벽 → 규칙 만들기 → TCP 3000 허용 (README Step 3 참고)
 
 # 프로젝트 클론
 git clone https://github.com/<your-repo>/ai-trader.git
@@ -157,9 +157,9 @@ SERVER_IP=<서버IP>
 
 ---
 
-## 9. Oracle Cloud 환경변수로 API 키 안전 관리 (권장)
+## 9. Google Cloud 환경변수로 API 키 안전 관리 (권장)
 
-`.env` 파일 대신 Oracle Cloud Instance Metadata로 관리하거나, PM2 환경변수 파일 사용:
+`.env` 파일 대신 PM2 환경변수 파일로 관리:
 
 ```bash
 # /etc/environment에 추가 (서버 재시작 시 자동 로드)
@@ -209,11 +209,11 @@ pm2 logs ai-trader
 
 ## 12. GitHub Actions 백업 설정
 
-Oracle 서버 장애 시 GitHub Actions가 카카오톡으로 알림 발송.
+Google Cloud 서버 장애 시 GitHub Actions가 카카오톡으로 알림 발송.
 
 1. GitHub 리포지토리 → Settings → Secrets and variables → Actions
 2. 다음 Secrets 추가:
-   - `SERVER_IP`: Oracle 서버 IP
+   - `SERVER_IP`: Google Cloud 서버 외부 IP
    - `PORT`: 3000
    - `KAKAO_ACCESS_TOKEN`: 카카오 Access Token
 
