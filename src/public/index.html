@@ -118,14 +118,17 @@ async function loadDashboard() {
 
     document.getElementById('summary-grid').innerHTML = `
       <div style="margin-bottom:16px">
-        <div class="summary-label">총 운용 자산</div>
-        <div class="pnl-big" style="margin-top:4px">${fmt(p.totalAssets)}원</div>
-        <div style="font-size:13px;margin-top:4px" class="${pnlCls}">${pnlSign}${fmt(pnl)}원 (${rateSign}${(p.overallProfitRate||0).toFixed(1)}%)</div>
+        <div class="summary-label" style="display:flex;justify-content:space-between;align-items:center">
+          총 운용 자산
+          <span id="last-updated" style="font-size:10px;color:var(--text-light);font-weight:400"></span>
+        </div>
+        <div class="pnl-big" id="live-total" style="margin-top:4px">${fmt(p.totalAssets)}원</div>
+        <div id="live-pnl" class="${pnlCls}" style="font-size:13px;margin-top:4px">${pnlSign}${fmt(pnl)}원 (${rateSign}${(p.overallProfitRate||0).toFixed(1)}%)</div>
       </div>
       <div class="summary-grid">
         <div class="summary-item">
           <div class="summary-label">보유 주식</div>
-          <div class="summary-value small">${fmt(p.stockValue)}원</div>
+          <div class="summary-value small" id="live-stock-val">${fmt(p.stockValue)}원</div>
         </div>
         <div class="summary-item">
           <div class="summary-label">현금</div>
@@ -165,8 +168,8 @@ async function loadDashboard() {
               <div class="stock-meta">${h.quantity}주 &nbsp;·&nbsp; 평단 ${fmt(h.avg_price)}원</div>
             </div>
             <div class="stock-price">
-              <div class="price">${fmt(h.current_price || h.avg_price)}원</div>
-              <div class="rate ${pCls}">${pSign}${pr.toFixed(1)}%</div>
+              <div class="price" id="live-price-${h.stock_name}">${fmt(h.current_price || h.avg_price)}원</div>
+              <div class="rate ${pCls}" id="live-rate-${h.stock_name}">${pSign}${pr.toFixed(1)}%</div>
             </div>
           </div>
           <div class="tech-row">
@@ -229,8 +232,95 @@ async function loadStats() {
   } catch(e) {}
 }
 
+// ── 실시간 폴링 ──────────────────────────────────────
+// 장 중(09:00~15:30)에만 60초마다 현재가/수익률 자동 갱신
+const POLL_INTERVAL_MS = 60 * 1000;
+let pollTimer = null;
+let lastUpdated = null;
+
+function isTradingHours() {
+  const now = new Date();
+  const day = now.getDay();
+  if (day === 0 || day === 6) return false;
+  const total = now.getHours() * 60 + now.getMinutes();
+  return total >= 540 && total < 930; // 09:00 ~ 15:30
+}
+
+function updateLastUpdatedLabel() {
+  const el = document.getElementById('last-updated');
+  if (!el) return;
+  if (!lastUpdated) { el.textContent = ''; return; }
+  const diff = Math.floor((Date.now() - lastUpdated) / 1000);
+  el.textContent = `${diff}초 전 업데이트`;
+}
+
+async function pollPrices() {
+  if (!isTradingHours()) {
+    // 장 외 시간 → 폴링 중단, 라벨 표시
+    const el = document.getElementById('last-updated');
+    if (el) el.textContent = '장 마감 — 자동 갱신 중지';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/portfolio');
+    const json = await res.json();
+    if (!json.ok || !json.data) return;
+    const p = json.data;
+    lastUpdated = Date.now();
+
+    // 총 자산 수치만 조용히 업데이트 (DOM 전체 재렌더 없이)
+    const pnl = p.unrealizedPnL || 0;
+    const pnlSign = pnl >= 0 ? '+' : '';
+    const pnlCls = pnl >= 0 ? 'positive' : 'negative';
+    const rateSign = (p.overallProfitRate || 0) >= 0 ? '+' : '';
+
+    const totalEl = document.getElementById('live-total');
+    const pnlEl = document.getElementById('live-pnl');
+    const stockValEl = document.getElementById('live-stock-val');
+    if (totalEl) totalEl.textContent = fmt(p.totalAssets) + '원';
+    if (pnlEl) {
+      pnlEl.textContent = `${pnlSign}${fmt(pnl)}원 (${rateSign}${(p.overallProfitRate||0).toFixed(1)}%)`;
+      pnlEl.className = pnlCls;
+      pnlEl.style.fontSize = '13px';
+      pnlEl.style.marginTop = '4px';
+    }
+    if (stockValEl) stockValEl.textContent = fmt(p.stockValue) + '원';
+
+    // 종목별 현재가/수익률 업데이트
+    if (p.holdings) {
+      p.holdings.forEach(h => {
+        const priceEl = document.getElementById(`live-price-${h.stock_name}`);
+        const rateEl = document.getElementById(`live-rate-${h.stock_name}`);
+        if (priceEl) priceEl.textContent = fmt(h.current_price || h.avg_price) + '원';
+        if (rateEl) {
+          const pr = h.profitRate || 0;
+          rateEl.textContent = `${pr >= 0 ? '+' : ''}${pr.toFixed(1)}%`;
+          rateEl.className = `rate ${pr >= 0 ? 'positive' : 'negative'}`;
+        }
+      });
+    }
+
+    updateLastUpdatedLabel();
+  } catch (e) {
+    // 폴링 실패 시 조용히 무시 (UI 깨지지 않음)
+  }
+}
+
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  // 1분마다 폴링 (장 중에만 실행)
+  pollTimer = setInterval(() => {
+    pollPrices();
+    updateLastUpdatedLabel();
+  }, POLL_INTERVAL_MS);
+  // 라벨 카운터 1초마다 갱신
+  setInterval(updateLastUpdatedLabel, 1000);
+}
+
 loadDashboard();
 loadStats();
+startPolling();
 </script>
 </body>
 </html>
