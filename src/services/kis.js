@@ -10,11 +10,14 @@ let tokenExpiry = 0;
 
 async function getToken() {
   if (kisToken && Date.now() < tokenExpiry) return kisToken;
+  const appKey = process.env.KIS_APP_KEY;
+  const appSecret = process.env.KIS_APP_SECRET;
+  const baseUrl = process.env.KIS_BASE_URL || 'https://openapi.koreainvestment.com:9443';
   try {
-    const res = await axios.post(`${BASE_URL}/oauth2/tokenP`, {
+    const res = await axios.post(`${baseUrl}/oauth2/tokenP`, {
       grant_type: 'client_credentials',
-      appkey: APP_KEY,
-      appsecret: APP_SECRET
+      appkey: appKey,
+      appsecret: appSecret
     }, {
       timeout: 10000,
       headers: {
@@ -59,8 +62,8 @@ async function getCurrentPrice(stockCode) {
       params: { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: stockCode },
       headers: {
         Authorization: `Bearer ${token}`,
-        appkey: APP_KEY,
-        appsecret: APP_SECRET,
+        appkey: process.env.KIS_APP_KEY,
+        appsecret: process.env.KIS_APP_SECRET,
         tr_id: 'FHKST01010100'
       },
       timeout: 10000
@@ -98,8 +101,8 @@ async function getDailyChart(stockCode, days = 60) {
       },
       headers: {
         Authorization: `Bearer ${token}`,
-        appkey: APP_KEY,
-        appsecret: APP_SECRET,
+        appkey: process.env.KIS_APP_KEY,
+        appsecret: process.env.KIS_APP_SECRET,
         tr_id: 'FHKST03010100'
       },
       timeout: 15000
@@ -124,8 +127,8 @@ async function getInvestorData(stockCode) {
       params: { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: stockCode },
       headers: {
         Authorization: `Bearer ${token}`,
-        appkey: APP_KEY,
-        appsecret: APP_SECRET,
+        appkey: process.env.KIS_APP_KEY,
+        appsecret: process.env.KIS_APP_SECRET,
         tr_id: 'FHKST01010900'
       },
       timeout: 10000
