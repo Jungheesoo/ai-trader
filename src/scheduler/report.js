@@ -5,6 +5,7 @@ const { isWeekday } = require('../services/holiday');
 const { getPortfolioSummary } = require('../services/portfolio');
 const { fetchAllRSS } = require('../services/rss');
 const { filterNewsBatch } = require('../services/claude-haiku');
+const { checkNewDisclosures } = require('../services/dart');
 const { sendErrorAlert } = require('../services/alert');
 
 async function runMorningReport() {
@@ -23,14 +24,22 @@ async function runMorningReport() {
       'SELECT * FROM watchlist WHERE date = ? ORDER BY rowid LIMIT 3'
     ).all(today);
 
-    // RSS 수집 후 Haiku 필터링
+    // RSS 수집 후 Haiku 필터링 (최대 30건)
     let relevantNews = [];
     try {
       const allNews = await fetchAllRSS();
-      const filtered = await filterNewsBatch(allNews, portfolio.holdings);
+      const filtered = await filterNewsBatch(allNews.slice(0, 30), portfolio.holdings);
       relevantNews = filtered.filter(n => n.relevant);
     } catch (e) {
       console.warn('[Report] 뉴스 수집 실패:', e.message);
+    }
+
+    // DART 공시 수집 (오늘 신규)
+    let dartDisclosures = [];
+    try {
+      dartDisclosures = await checkNewDisclosures(portfolio.holdings);
+    } catch (e) {
+      console.warn('[Report] DART 수집 실패:', e.message);
     }
 
     // 오늘 요일 체크
@@ -39,7 +48,7 @@ async function runMorningReport() {
     const isMonday = dayOfWeek === 1;
 
     // Sonnet 호출
-    const prompt = buildMorningPrompt(portfolio, watchlist, relevantNews, isFriday, isMonday);
+    const prompt = buildMorningPrompt(portfolio, watchlist, relevantNews, isFriday, isMonday, dartDisclosures);
     const result = await callSonnet(prompt, 'morning_report');
 
     if (!result) {
@@ -48,7 +57,7 @@ async function runMorningReport() {
     }
 
     // 리포트 메시지 생성
-    const message = formatMorningReport(portfolio, watchlist, result, isFriday, isMonday, relevantNews);
+    const message = formatMorningReport(portfolio, watchlist, result, isFriday, isMonday, relevantNews, dartDisclosures);
     await sendKakao(message);
 
     // 분석 결과 DB 저장
@@ -76,7 +85,7 @@ async function runMorningReport() {
   }
 }
 
-function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday) {
+function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dartDisclosures = []) {
   const now = new Date();
   const minutesUntilClose = Math.max(0, Math.floor((new Date(now.toDateString() + ' 15:30:00') - now) / 60000));
 
@@ -110,6 +119,7 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday) {
       volume_ratio: w.volume_ratio
     })),
     relevant_news: news.slice(0, 5).map(n => ({ title: n.title, reason: n.reason, urgency: n.urgency, impact: n.impact })),
+    dart_disclosures: dartDisclosures.map(d => ({ stockName: d.stockName, title: d.title, type: d.type, impact: d.impact, icon: d.icon })),
     market_context: {
       day_of_week: ['일', '월', '화', '수', '목', '금', '토'][new Date().getDay()],
       is_friday: isFriday,
@@ -120,7 +130,7 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday) {
   };
 }
 
-function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relevantNews) {
+function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relevantNews, dartDisclosures = []) {
   const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace('.', '');
   const serverUrl = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
 
@@ -148,6 +158,16 @@ function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relev
       if (h.trailingStop) msg += `트레일링 손절가: ${h.trailingStop.toLocaleString()}원\n`;
       msg += '\n';
     }
+  }
+
+  // ── DART 공시
+  if (dartDisclosures && dartDisclosures.length > 0) {
+    msg += `━━━━━━━━━━━━━━\n📋 오늘 DART 공시\n━━━━━━━━━━━━━━\n`;
+    dartDisclosures.forEach(d => {
+      msg += `${d.icon} [${d.stockName}] ${d.title}\n`;
+      msg += `   영향: ${d.impact} / ${d.url}\n`;
+    });
+    msg += '\n';
   }
 
   // ── 뉴스

@@ -58,7 +58,7 @@ function shouldCallSonnet(holding, news = [], watchlistCandidate = null) {
   return { should: reasons.length > 0, reasons };
 }
 
-function buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, context) {
+function buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, context, dartDisclosures = []) {
   const now = new Date();
   const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
   const dayName = dayNames[now.getDay()];
@@ -75,12 +75,11 @@ function buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, co
 RSI: ${h.rsi ?? '데이터없음'}
 MACD: ${h.macd ?? '데이터없음'}
 거래량배수: ${h.volumeRatio ?? '데이터없음'}
-외국인순매수: ${h.foreignNet?.toLocaleString() ?? '데이터없음'}
-기관순매수: ${h.institutionNet?.toLocaleString() ?? '데이터없음'}
+외국인순매수: ${h.foreignNet?.toLocaleString() ?? '데이터없음'}주
+기관순매수: ${h.institutionNet?.toLocaleString() ?? '데이터없음'}주
 트레일링스탑: ${h.trailingStop?.toLocaleString() ?? '데이터없음'}원`
   ).join('\n---');
 
-  // 나스닥 관련 뉴스 추출 (RSS에서 수집된 나스닥/미국증시 뉴스)
   const nasdaqNews = relevantNews.filter(n =>
     (n.source || '').includes('나스닥') || (n.title || '').includes('NASDAQ') ||
     (n.title || '').includes('나스닥') || (n.source || '').includes('investing')
@@ -90,8 +89,17 @@ MACD: ${h.macd ?? '데이터없음'}
     : '데이터없음 (RSS 미수집)';
 
   const newsText = relevantNews.length > 0
-    ? relevantNews.map(n => `[${n.source || n.news?.source}] ${n.title || n.news?.title}\n${n.content || n.summary || n.news?.content || n.news?.summary || ''}`).join('\n\n')
+    ? relevantNews.map(n =>
+        `[${n.source || n.news?.source}] ${n.title || n.news?.title} (영향:${n.impact || '중립'}, 긴급도:${n.urgency || '정보'})\n${(n.content || n.summary || n.news?.content || n.news?.summary || '').slice(0, 300)}`
+      ).join('\n\n')
     : '영향 뉴스 없음';
+
+  // DART 공시 텍스트
+  const dartText = dartDisclosures.length > 0
+    ? dartDisclosures.map(d =>
+        `${d.icon} [${d.stockName}] ${d.title} (${d.date}) — 영향: ${d.impact}\n공시URL: ${d.url}`
+      ).join('\n')
+    : '신규 공시 없음';
 
   const watchlistText = (watchlist || []).slice(0, 10).map(w =>
     `${w.stock_name}: RSI ${w.rsi}, MACD ${w.macd}, 거래량배수 ${w.volume_ratio}`
@@ -112,7 +120,10 @@ ${isMonday ? '⚠️ 오늘은 월요일입니다. 주말 효과 가능성 고�
 === 보유 종목 상세 ===
 ${holdingsText}
 
-=== 관련 뉴스 (Haiku 필터 통과) ===
+=== DART 신규 공시 (오늘) ===
+${dartText}
+
+=== 관련 뉴스 (Haiku 필터 통과, 최대 15건) ===
 ${newsText}
 
 === 관심 종목 TOP10 (퀀트 스캔 결과) ===
@@ -123,15 +134,19 @@ ${context || ''}
 위 데이터만을 근거로 분석하세요. 데이터가 없는 항목은 판단불가로 처리하세요.
 부분매도 절대 금지. 모든 매도는 전량매도만 추천.
 
+[DART 공시 판단 기준]
+- 🚨 긴급(악재): 즉시 매도 검토 필수 근거로 활용
+- ✅ 호재(수주/계약): 보유 유지 또는 추가매수 근거로 활용
+- 📊 실적발표: 내용 해석 후 긍/부 판단 (수치 없으면 판단불가)
+
 [전량매도 권고 조건 - 아래 중 2개 이상 동시 충족 시]
 - 주가 -5% 이상 급락
 - 트레일링 스탑(고점 -7%) 도달
 - 외국인 + 기관 동시 대량 매도
-- DART 공시: 실적쇼크/횡령/배임/소송
+- DART 악재 공시 (횡령/배임/소송/어닝쇼크)
 - 동일 악재 3개 이상 매체 동시 보도
 - 미국 증시 -3% 이상 + 관련 업종 악재 동시
 - RSI 70 이상 + 거래량 급감 동시
-- 나스닥 -3% 이상: 즉시 긴급 분석 필요
 
 [익절 후 재투자 vs 현금 보유 판단 기준]
 장 마감까지: ${minutesLeft}분
@@ -144,12 +159,16 @@ ${isMonday ? '오늘 월요일: 주말 효과 하락 가능. 급락 시 악재 �
 현금 보유 조건 (하나라도 해당 시): 시장 하락 중, 마땅한 대체 종목 없음, 장 마감 1시간 이내, 주말 효과 우려`;
 }
 
-async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, context = '') {
-  // Haiku 필터링 (filterNewsBatch는 flat 구조 반환: {title, relevant, urgency, ...})
-  const haikuResults = await filterNewsBatch(allNews, enrichedHoldings);
+async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, context = '', dartDisclosures = []) {
+  // Haiku 비용 제어: 장 중 최대 30건, 긴급 공시 있으면 우선 처리
+  const MAX_HAIKU_NEWS = 30;
+  const newsToFilter = allNews.slice(0, MAX_HAIKU_NEWS);
+  console.log(`[Haiku] 뉴스 필터링 ${newsToFilter.length}건 (전체 ${allNews.length}건 중)`);
+
+  const haikuResults = await filterNewsBatch(newsToFilter, enrichedHoldings);
   const relevantNews = haikuResults.filter(n => n.relevant === true);
 
-  // 이상 감지 체크
+  // 이상 감지 체크 (퀀트 + 뉴스)
   let triggerReasons = [];
   for (const h of enrichedHoldings) {
     const holdingNews = relevantNews.filter(n =>
@@ -158,18 +177,24 @@ async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, co
     const { should, reasons } = shouldCallSonnet(h, holdingNews);
     if (should) triggerReasons.push(...reasons);
   }
-  if (relevantNews.some(n => n.urgency === '긴급')) {
-    triggerReasons.push('긴급 뉴스');
-  }
+  if (relevantNews.some(n => n.urgency === '긴급')) triggerReasons.push('긴급 뉴스');
+
+  // DART 긴급 공시 → 무조건 Sonnet 호출
+  const urgentDart = dartDisclosures.filter(d => d.isUrgent);
+  if (urgentDart.length > 0) triggerReasons.push(`DART 긴급공시: ${urgentDart.map(d => d.title).join(', ')}`);
+
+  // DART 호재 공시 → Sonnet 호출 트리거
+  const positiveDart = dartDisclosures.filter(d => d.isPositive);
+  if (positiveDart.length > 0) triggerReasons.push(`DART 호재공시: ${positiveDart.map(d => d.title).join(', ')}`);
 
   if (triggerReasons.length === 0 && !context) {
-    return { triggered: false, relevantNews };
+    return { triggered: false, relevantNews, dartDisclosures };
   }
 
-  const prompt = buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, context);
+  const prompt = buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, context, dartDisclosures);
   const result = await callSonnet(prompt);
 
-  return { triggered: true, triggerReasons, relevantNews, analysis: result };
+  return { triggered: true, triggerReasons, relevantNews, dartDisclosures, analysis: result };
 }
 
 async function runMorningReport(enrichedHoldings, assets, allNews, watchlist) {
@@ -243,10 +268,25 @@ async function runAnalysisPipeline(portfolioSummary) {
     }
   } catch (e) { console.warn('[Pipeline] 네이버 뉴스 실패:', e.message); }
 
-  // DART 공시 체크
+  // DART 공시 체크 — 신규 공시 수집 및 즉시 알림
+  let dartDisclosures = [];
   try {
-    for (const h of holdings) {
-      if (h.stock_code) await checkDart(h.stock_code, h.stock_name);
+    const { checkNewDisclosures } = require('./dart');
+    const { sendKakao } = require('./kakao');
+    const SERVER_URL = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
+
+    dartDisclosures = await checkNewDisclosures(holdings);
+
+    // 중요 공시(긴급/호재/실적) 즉시 카카오 알림
+    const notifyDart = dartDisclosures.filter(d => d.isImportant);
+    for (const d of notifyDart) {
+      let msg = `${d.icon} [DART 공시] ${d.stockName}\n\n`;
+      msg += `${d.title}\n`;
+      msg += `영향: ${d.impact} / 발생일: ${d.date}\n`;
+      if (d.isUrgent) msg += `\n⚠️ 악재성 공시 — 즉시 확인 필요\n`;
+      if (d.isPositive) msg += `\n✅ 호재성 공시 — AI 분석 진행 중\n`;
+      msg += `\n📎 ${d.url}\n👉 ${SERVER_URL}`;
+      await sendKakao(msg, d.stockName, `dart_${d.type}`);
     }
   } catch (e) { console.warn('[Pipeline] DART 체크 실패:', e.message); }
 
@@ -260,7 +300,7 @@ async function runAnalysisPipeline(portfolioSummary) {
   // watchlist 로드
   const watchlist = db.prepare('SELECT * FROM watchlist WHERE date = ? ORDER BY rowid LIMIT 10').all(today);
 
-  const result = await analyzePortfolio(holdings, assets, allNews, watchlist);
+  const result = await analyzePortfolio(holdings, assets, allNews, watchlist, '', dartDisclosures);
 
   if (result.triggered && result.analysis) {
     const a = result.analysis;
