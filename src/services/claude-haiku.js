@@ -2,7 +2,7 @@ require('dotenv').config();
 const axios = require('axios');
 const { recordHaikuCall } = require('./guard');
 
-const MODEL = process.env.CLAUDE_HAIKU_MODEL || 'claude-haiku-20240307';
+const MODEL = process.env.CLAUDE_HAIKU_MODEL || 'claude-haiku-4-5-20251001';
 const API_KEY = process.env.CLAUDE_API_KEY;
 
 const SYSTEM_PROMPT = `당신은 뉴스 영향도 분류 AI입니다.
