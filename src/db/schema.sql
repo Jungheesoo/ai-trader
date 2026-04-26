@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS analysis (
   confidence TEXT,
   reason TEXT,
   data_used TEXT,
+  news_impact TEXT,
+  why_sell_now TEXT,
+  why_hold TEXT,
+  why_switch TEXT,
+  why_cash TEXT,
   alternative_stock TEXT,
   target_price REAL,
   stop_loss REAL,
@@ -101,8 +106,13 @@ CREATE TABLE IF NOT EXISTS news_cache (
   date TEXT NOT NULL,
   source TEXT,
   title TEXT,
-  url TEXT,
+  url TEXT UNIQUE,
   content TEXT,
   haiku_result TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_news_cache_date ON news_cache(date);
+CREATE INDEX IF NOT EXISTS idx_news_cache_url ON news_cache(url);
+CREATE INDEX IF NOT EXISTS idx_analysis_date ON analysis(date);
+CREATE INDEX IF NOT EXISTS idx_holdings_date ON holdings(date);

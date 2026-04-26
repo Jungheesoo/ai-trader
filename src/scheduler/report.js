@@ -53,22 +53,19 @@ async function runMorningReport() {
 
     // 분석 결과 DB 저장
     if (portfolio.holdings.length > 0) {
-      const stmt = db.prepare(
-        `INSERT INTO analysis (date, stock_name, action, confidence, reason, data_used, alternative_stock, target_price, stop_loss, urgency, cash_recommendation)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      );
-      stmt.run(
+      db.prepare(
+        `INSERT INTO analysis (date, stock_name, action, confidence, reason, data_used, news_impact, why_sell_now, why_hold, why_switch, why_cash, alternative_stock, target_price, stop_loss, urgency, cash_recommendation)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
         today,
         portfolio.holdings.map(h => h.stock_name).join(','),
-        result.action,
-        result.confidence,
-        result.reason,
+        result.action, result.confidence, result.reason,
         JSON.stringify(result.data_used || []),
-        result.alternative_stock,
-        result.target_price,
-        result.stop_loss,
-        result.urgency,
-        result.cash_recommendation
+        result.news_impact || null,
+        result.why_sell_now || null, result.why_hold || null,
+        result.why_switch || null, result.why_cash || null,
+        result.alternative_stock, result.target_price, result.stop_loss,
+        result.urgency, result.cash_recommendation
       );
     }
 

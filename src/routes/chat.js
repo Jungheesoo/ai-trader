@@ -54,20 +54,19 @@ router.post('/', async (req, res) => {
     // 채팅 이력 저장
     const db = getDb();
     db.prepare(
-      `INSERT INTO analysis (date, stock_name, action, confidence, reason, data_used, alternative_stock, target_price, stop_loss, urgency, cash_recommendation)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO analysis (date, stock_name, action, confidence, reason, data_used, news_impact, why_sell_now, why_hold, why_switch, why_cash, alternative_stock, target_price, stop_loss, urgency, cash_recommendation)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       today,
       portfolio.holdings.map(h => h.stock_name).join(',') || '없음',
-      result.action,
-      result.confidence,
+      result.action, result.confidence,
       `[사용자 질문] ${question} | ${result.reason}`,
       JSON.stringify(result.data_used || []),
-      result.alternative_stock,
-      result.target_price,
-      result.stop_loss,
-      result.urgency,
-      result.cash_recommendation
+      result.news_impact || null,
+      result.why_sell_now || null, result.why_hold || null,
+      result.why_switch || null, result.why_cash || null,
+      result.alternative_stock, result.target_price, result.stop_loss,
+      result.urgency, result.cash_recommendation
     );
 
     res.json({ ok: true, data: result });

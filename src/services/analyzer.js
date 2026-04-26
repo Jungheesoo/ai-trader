@@ -264,20 +264,26 @@ async function runAnalysisPipeline(portfolioSummary) {
 
   if (result.triggered && result.analysis) {
     const a = result.analysis;
-    // 긴급/매도 신호일 때만 알림, 보유 종목 중 첫 번째 대표 종목으로 발송
+
+    // 보유 종목별로 개별 알림 (첫 번째 종목에만 보내던 버그 수정)
     if (a.action && a.action !== '보유유지' && a.action !== '판단불가') {
-      const repHolding = holdings[0];
-      await sendUrgentAlert(repHolding, a, result.relevantNews || []);
+      for (const holding of holdings) {
+        await sendUrgentAlert(holding, a, result.relevantNews || []);
+      }
     }
-    // DB 저장
+
+    // DB 저장 (new 컬럼 포함)
     db.prepare(
-      `INSERT INTO analysis (date, stock_name, action, confidence, reason, data_used, alternative_stock, target_price, stop_loss, urgency, cash_recommendation)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO analysis (date, stock_name, action, confidence, reason, data_used, news_impact, why_sell_now, why_hold, why_switch, why_cash, alternative_stock, target_price, stop_loss, urgency, cash_recommendation)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       today,
       holdings.map(h => h.stock_name).join(','),
       a.action, a.confidence, a.reason,
       JSON.stringify(a.data_used || []),
+      a.news_impact || null,
+      a.why_sell_now || null, a.why_hold || null,
+      a.why_switch || null, a.why_cash || null,
       a.alternative_stock, a.target_price, a.stop_loss, a.urgency, a.cash_recommendation
     );
   }
