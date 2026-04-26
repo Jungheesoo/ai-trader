@@ -15,7 +15,13 @@ async function getToken() {
       grant_type: 'client_credentials',
       appkey: APP_KEY,
       appsecret: APP_SECRET
-    }, { timeout: 10000 });
+    }, {
+      timeout: 10000,
+      headers: {
+        'content-type': 'application/json',
+        'User-Agent': 'Mozilla/5.0'
+      }
+    });
     kisToken = res.data.access_token;
     tokenExpiry = Date.now() + (res.data.expires_in - 60) * 1000;
     return kisToken;
