@@ -119,7 +119,19 @@ async function getCurrentPrice(stockCode) {
     });
     const d = res.data.output;
     if (!d) throw new Error('데이터 없음');
-    const price = parseFloat(d.stck_prpr);
+    // 장 중: stck_prpr(현재가), 장 외: stck_clpr(당일/전일 종가) 사용
+    const isMarketOpen = (() => {
+      const now = new Date();
+      const day = now.getDay();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const minutes = h * 60 + m;
+      // 평일 09:00~15:30 (KST = UTC+9)
+      return day >= 1 && day <= 5 && minutes >= 540 && minutes <= 930;
+    })();
+    const prpr = parseFloat(d.stck_prpr);
+    const clpr = parseFloat(d.stck_clpr);
+    const price = isMarketOpen ? (prpr || clpr) : (clpr || prpr);
     if (!price || price < 0 || isNaN(price)) throw new Error('유효하지 않은 주가');
     return {
       stockCode,
