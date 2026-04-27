@@ -111,4 +111,43 @@ router.get('/alerts', (req, res) => {
   }
 });
 
+// GET /api/history/trades - 매매일지
+router.get('/trades', (req, res) => {
+  try {
+    const db = getDb();
+    const { days = 30 } = req.query;
+    const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const startDate = new Date(kst);
+    startDate.setDate(kst.getDate() - parseInt(days));
+    const startStr = startDate.toISOString().slice(0, 10);
+
+    const trades = db.prepare(
+      "SELECT * FROM trades WHERE date >= ? ORDER BY date DESC, created_at DESC"
+    ).all(startStr);
+
+    // 요약 통계
+    const sells = trades.filter(t => t.trade_type === 'sell_profit' || t.trade_type === 'sell_loss' || t.trade_type === 'switch');
+    const profitTrades = trades.filter(t => t.trade_type === 'sell_profit' || t.trade_type === 'switch');
+    const lossTrades = trades.filter(t => t.trade_type === 'sell_loss');
+    const totalPL = sells.reduce((s, t) => s + (t.profit_loss || 0), 0);
+    const winRate = sells.length > 0 ? Math.round(profitTrades.length / sells.length * 100) : null;
+
+    res.json({
+      ok: true,
+      data: {
+        trades,
+        summary: {
+          total_sells: sells.length,
+          profit_count: profitTrades.length,
+          loss_count: lossTrades.length,
+          win_rate: winRate,
+          total_pl: Math.round(totalPL)
+        }
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 module.exports = router;

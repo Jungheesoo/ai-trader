@@ -3,199 +3,202 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>분석 이력 - AI 트레이더</title>
+<title>매매일지 - AI 트레이더</title>
 <link rel="stylesheet" href="/style.css">
+<style>
+.period-tabs { display:flex; gap:8px; margin:12px 16px; }
+.period-tab { flex:1; padding:8px 0; text-align:center; border-radius:8px; border:1px solid var(--border); background:var(--card); color:var(--text-muted); font-size:13px; font-weight:600; cursor:pointer; }
+.period-tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.trade-date-group { margin-bottom:4px; }
+.trade-date-header { font-size:11px; font-weight:700; color:var(--text-muted); padding:8px 16px 4px; text-transform:uppercase; letter-spacing:0.5px; }
+.trade-item { background:var(--card); margin:0 0 1px; padding:12px 16px; display:flex; align-items:center; gap:10px; }
+.trade-item:first-of-type { border-radius:10px 10px 0 0; }
+.trade-item:last-of-type { border-radius:0 0 10px 10px; margin-bottom:8px; }
+.trade-item:only-of-type { border-radius:10px; margin-bottom:8px; }
+.trade-badge { font-size:11px; font-weight:700; padding:3px 8px; border-radius:5px; white-space:nowrap; }
+.badge-profit { background:#1a3a2a; color:#4ade80; }
+.badge-loss { background:#3a1a1a; color:#f87171; }
+.badge-switch { background:#1a2a3a; color:#60a5fa; }
+.badge-buy { background:#2a2a1a; color:#facc15; }
+.trade-name { font-size:14px; font-weight:700; color:var(--text); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.trade-pl { text-align:right; white-space:nowrap; }
+.trade-pl-amount { font-size:14px; font-weight:700; }
+.trade-pl-rate { font-size:11px; color:var(--text-muted); margin-top:1px; }
+.summary-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--border); border-radius:10px; overflow:hidden; margin:12px 16px; }
+.summary-cell { background:var(--card); padding:12px 8px; text-align:center; }
+.summary-val { font-size:17px; font-weight:800; }
+.summary-lbl { font-size:11px; color:var(--text-muted); margin-top:3px; }
+.total-pl-bar { margin:0 16px 12px; background:var(--card); border-radius:10px; padding:14px 16px; display:flex; justify-content:space-between; align-items:center; }
+.total-pl-label { font-size:12px; color:var(--text-muted); }
+.total-pl-amount { font-size:20px; font-weight:800; }
+</style>
 </head>
 <body>
 
 <div class="header">
   <div>
-    <div class="header-title">📊 분석 이력</div>
-    <div class="header-sub">AI 추천 이력 및 성과</div>
+    <div class="header-title">📒 매매일지</div>
+    <div class="header-sub">실현 손익 기록</div>
   </div>
 </div>
 
-<div class="stat-grid" style="margin-top:16px">
-  <div class="stat-item">
-    <div class="stat-value positive" id="accuracy-rate">-</div>
-    <div class="stat-label">AI 적중률</div>
+<div class="period-tabs">
+  <div class="period-tab active" onclick="setPeriod(7, this)">7일</div>
+  <div class="period-tab" onclick="setPeriod(30, this)">30일</div>
+  <div class="period-tab" onclick="setPeriod(9999, this)">전체</div>
+</div>
+
+<div class="summary-grid" id="summary-grid">
+  <div class="summary-cell">
+    <div class="summary-val" id="s-total">-</div>
+    <div class="summary-lbl">총 매도</div>
   </div>
-  <div class="stat-item">
-    <div class="stat-value" id="seed-growth">-</div>
-    <div class="stat-label">시드 성장</div>
+  <div class="summary-cell">
+    <div class="summary-val positive" id="s-profit">-</div>
+    <div class="summary-lbl">익절</div>
   </div>
-  <div class="stat-item">
-    <div class="stat-value" id="sell-count">-</div>
-    <div class="stat-label">익절 횟수</div>
+  <div class="summary-cell">
+    <div class="summary-val negative" id="s-loss">-</div>
+    <div class="summary-lbl">손절</div>
   </div>
 </div>
 
-<div class="card">
-  <div class="card-title">시드 성장 이력</div>
-  <div id="seed-chart">
-    <div class="loading"><div class="spinner"></div></div>
+<div class="total-pl-bar">
+  <div>
+    <div class="total-pl-label">누적 실현손익</div>
+    <div class="total-pl-amount" id="s-total-pl">-</div>
+  </div>
+  <div style="text-align:right">
+    <div class="total-pl-label">승률</div>
+    <div class="summary-val" id="s-winrate" style="font-size:20px;font-weight:800">-</div>
   </div>
 </div>
 
-<div class="card">
-  <div class="card-title">AI 추천 이력</div>
-  <div id="history-list">
-    <div class="loading"><div class="spinner"></div></div>
-  </div>
+<div id="trade-list">
+  <div class="loading"><div class="spinner"></div></div>
 </div>
 
 <nav class="nav-bottom">
   <a href="/"><span class="icon">🏠</span>홈</a>
   <a href="/portfolio.html"><span class="icon">💼</span>자산입력</a>
   <a href="/chat.html"><span class="icon">🤖</span>AI질문</a>
-  <a href="/history.html" class="active"><span class="icon">📊</span>이력</a>
+  <a href="/history.html" class="active"><span class="icon">📒</span>매매일지</a>
 </nav>
 
 <script>
-async function loadPerformance() {
-  try {
-    const res = await fetch('/api/history/performance?period=30');
-    const json = await res.json();
-    if (!json.ok) return;
-    const d = json.data;
+let currentDays = 7;
 
-    if (d.accuracy_rate !== null) {
-      document.getElementById('accuracy-rate').textContent = d.accuracy_rate + '%';
-    }
-
-    if (d.seed_growth && d.seed_growth.length >= 2) {
-      const first = d.seed_growth[0];
-      const last = d.seed_growth[d.seed_growth.length - 1];
-      const rate = first.total_assets > 0
-        ? (((last.total_assets - first.total_assets) / first.total_assets) * 100).toFixed(1)
-        : 0;
-      const sign = rate >= 0 ? '+' : '';
-      const el = document.getElementById('seed-growth');
-      el.textContent = sign + rate + '%';
-      el.className = 'stat-value ' + (rate >= 0 ? 'positive' : 'negative');
-    }
-
-    document.getElementById('sell-count').textContent = d.sell_count || 0;
-    renderSeedChart(d.seed_growth || []);
-  } catch(e) {}
+function setPeriod(days, el) {
+  currentDays = days;
+  document.querySelectorAll('.period-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  loadTrades();
 }
 
-function renderSeedChart(data) {
-  const el = document.getElementById('seed-chart');
-  if (!data.length) {
-    el.innerHTML = `<div class="empty-state" style="padding:16px 0">
-      <div class="icon">📉</div>
-      <div class="desc">시드 이력 없음</div>
-    </div>`;
-    return;
-  }
-  el.innerHTML = data.slice(-10).map(d => {
-    const rate = d.daily_profit_loss_rate || 0;
-    const sign = rate >= 0 ? '+' : '';
-    const cls = rate >= 0 ? 'positive' : 'negative';
-    const barWidth = Math.min(100, Math.abs(rate) * 10);
-    const barColor = rate >= 0 ? 'var(--up)' : 'var(--down)';
-    return `<div class="history-item">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <div class="history-date">${d.date}</div>
-          <div style="font-size:15px;font-weight:700;margin-top:2px">${(d.total_assets||0).toLocaleString()}원</div>
-        </div>
-        <div style="text-align:right">
-          <div class="${cls}" style="font-size:14px;font-weight:700">${sign}${rate.toFixed(1)}%</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">익절 ${d.sell_count||0} · 현금보유 ${d.cash_hold_count||0}</div>
-        </div>
-      </div>
-      <div style="height:3px;border-radius:2px;background:var(--border);margin-top:8px;overflow:hidden">
-        <div style="height:100%;width:${barWidth}%;background:${barColor};border-radius:2px"></div>
-      </div>
-    </div>`;
-  }).join('');
+function typeBadge(type) {
+  const map = {
+    sell_profit: ['익절', 'badge-profit'],
+    sell_loss:   ['손절', 'badge-loss'],
+    switch:      ['교체', 'badge-switch'],
+    buy:         ['매수', 'badge-buy'],
+  };
+  const [label, cls] = map[type] || [type, 'badge-buy'];
+  return `<span class="trade-badge ${cls}">${label}</span>`;
 }
 
-async function loadHistory() {
+async function loadTrades() {
+  const el = document.getElementById('trade-list');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   try {
-    const res = await fetch('/api/history?limit=20');
+    const params = currentDays === 9999 ? 'days=3650' : `days=${currentDays}`;
+    const res = await fetch(`/api/history/trades?${params}`);
     const json = await res.json();
-    const el = document.getElementById('history-list');
+    if (!json.ok) throw new Error();
+    const { trades, summary } = json.data;
 
-    if (!json.ok || !json.data.length) {
-      el.innerHTML = `<div class="empty-state" style="padding:16px 0">
-        <div class="icon">🤖</div>
-        <div class="title">분석 이력 없음</div>
-        <div class="desc">AI 분석이 실행되면 여기에 표시됩니다</div>
+    document.getElementById('s-total').textContent = summary.total_sells;
+    document.getElementById('s-profit').textContent = summary.profit_count;
+    document.getElementById('s-loss').textContent = summary.loss_count;
+
+    const plEl = document.getElementById('s-total-pl');
+    const pl = summary.total_pl || 0;
+    plEl.textContent = (pl >= 0 ? '+' : '') + pl.toLocaleString() + '원';
+    plEl.className = 'total-pl-amount ' + (pl >= 0 ? 'positive' : 'negative');
+
+    const wrEl = document.getElementById('s-winrate');
+    wrEl.textContent = summary.win_rate !== null ? summary.win_rate + '%' : '-';
+    wrEl.className = 'summary-val ' + (summary.win_rate >= 50 ? 'positive' : summary.win_rate !== null ? 'negative' : '');
+
+    if (!trades.length) {
+      el.innerHTML = `<div class="empty-state" style="padding:32px 0">
+        <div class="icon">📒</div>
+        <div class="title">매매 기록 없음</div>
+        <div class="desc">자산입력 탭에서 매도/매수를 입력하면<br>여기에 표시됩니다</div>
       </div>`;
       return;
     }
 
-    el.innerHTML = json.data.map(h => {
-      let actionCls = 'hold', actionColor = 'action-hold';
-      if ((h.action||'').includes('매도')) { actionCls = 'sell'; actionColor = 'action-sell'; }
-      else if ((h.action||'').includes('매수')) { actionCls = 'buy'; actionColor = 'action-buy'; }
+    // group by date
+    const byDate = {};
+    for (const t of trades) {
+      if (!byDate[t.date]) byDate[t.date] = [];
+      byDate[t.date].push(t);
+    }
 
-      let resultBadge = '';
-      if (h.actual_result === 'correct') {
-        resultBadge = '<span class="badge badge-green">적중</span>';
-      } else if (h.actual_result === 'incorrect') {
-        resultBadge = '<span class="badge badge-red">미적중</span>';
-      } else {
-        resultBadge = `<button class="btn btn-secondary btn-sm" style="padding:3px 10px;font-size:11px" onclick="markResult(${h.id}, this)">결과 입력</button>`;
-      }
+    el.innerHTML = Object.entries(byDate).map(([date, items]) => {
+      const dayPL = items
+        .filter(t => t.trade_type !== 'buy')
+        .reduce((s, t) => s + (t.profit_loss || 0), 0);
+      const daySign = dayPL >= 0 ? '+' : '';
+      const dayCls = dayPL >= 0 ? 'positive' : 'negative';
 
-      const conf = h.confidence
-        ? `<span class="badge ${h.confidence==='높음'?'badge-green':h.confidence==='보통'?'badge-yellow':'badge-red'}">${h.confidence}</span>`
-        : '';
+      const rows = items.map((t, i) => {
+        const isSell = t.trade_type !== 'buy';
+        const pl = t.profit_loss || 0;
+        const plSign = pl >= 0 ? '+' : '';
+        const plCls = pl >= 0 ? 'positive' : 'negative';
 
-      const timeStr = h.created_at
-        ? new Date(h.created_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})
-        : '';
+        const rate = t.avg_price && t.price
+          ? Math.round(((t.price - t.avg_price) / t.avg_price) * 10000) / 100
+          : null;
 
-      const reason = (h.reason||'-').substring(0, 90) + ((h.reason||'').length > 90 ? '…' : '');
+        const isFirst = i === 0;
+        const isLast = i === items.length - 1;
+        const isOnly = items.length === 1;
+        let radius = '';
+        if (isOnly) radius = 'border-radius:10px;';
+        else if (isFirst) radius = 'border-radius:10px 10px 0 0;';
+        else if (isLast) radius = 'border-radius:0 0 10px 10px;';
 
-      return `<div class="history-item" id="hi-${h.id}">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-          <span class="history-date">${h.date}${timeStr ? ' · ' + timeStr : ''}</span>
-          ${h.stock_name ? `<span style="font-size:11px;font-weight:600;color:var(--text)">${h.stock_name}</span>` : ''}
-          ${conf}
-          <span style="margin-left:auto">${resultBadge}</span>
+        return `<div class="trade-item" style="${radius}">
+          ${typeBadge(t.trade_type)}
+          <div class="trade-name">${t.stock_name || '-'}</div>
+          ${isSell ? `<div class="trade-pl">
+            <div class="trade-pl-amount ${plCls}">${plSign}${pl.toLocaleString()}원</div>
+            ${rate !== null ? `<div class="trade-pl-rate">${plSign}${rate}%</div>` : ''}
+          </div>` : `<div style="font-size:12px;color:var(--text-muted)">${(t.price||0).toLocaleString()}원</div>`}
+        </div>`;
+      }).join('');
+
+      return `<div class="trade-date-group">
+        <div class="trade-date-header" style="display:flex;justify-content:space-between;padding-right:16px">
+          <span>${date}</span>
+          ${dayPL !== 0 ? `<span class="${dayCls}" style="font-size:11px;font-weight:700">${daySign}${dayPL.toLocaleString()}원</span>` : ''}
         </div>
-        <div class="ai-action ${actionCls}" style="margin-top:0">
-          <span class="action-label ${actionColor}">${h.action||'-'}</span>
-          <span style="color:var(--text-muted);font-size:12px">${reason}</span>
+        <div style="margin:0 16px">
+          ${rows}
         </div>
-        ${h.target_price ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;display:flex;gap:12px">
-          <span>🎯 목표가 <strong style="color:var(--text)">${h.target_price.toLocaleString()}원</strong></span>
-          ${h.stop_loss ? `<span>🛡 손절가 <strong style="color:var(--text)">${h.stop_loss.toLocaleString()}원</strong></span>` : ''}
-        </div>` : ''}
       </div>`;
     }).join('');
-  } catch(e) {}
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state" style="padding:32px 0">
+      <div class="icon">⚠️</div>
+      <div class="desc">데이터를 불러올 수 없습니다</div>
+    </div>`;
+  }
 }
 
-async function markResult(id, btn) {
-  const result = confirm('AI 추천이 적중했나요?\n확인=적중 / 취소=미적중');
-  const val = result ? 'correct' : 'incorrect';
-  try {
-    const res = await fetch('/api/history/' + id + '/result', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ result: val })
-    });
-    const json = await res.json();
-    if (json.ok) {
-      const row = document.getElementById('hi-' + id);
-      if (row) {
-        const old = row.querySelector('button');
-        if (old) old.outerHTML = val === 'correct'
-          ? '<span class="badge badge-green">적중</span>'
-          : '<span class="badge badge-red">미적중</span>';
-      }
-    }
-  } catch(e) {}
-}
-
-loadPerformance();
-loadHistory();
+loadTrades();
 </script>
 </body>
 </html>
