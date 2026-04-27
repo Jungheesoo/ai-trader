@@ -20,6 +20,9 @@ const { runMondayCheck } = require('./scheduler/monday');
 const { runClosingReport } = require('./scheduler/closing');
 const { runNightMonitor } = require('./scheduler/night');
 const { runWeeklyReport } = require('./scheduler/weekly');
+const { runMonthlyReport } = require('./scheduler/monthly');
+const kisWs = require('./services/kis-websocket');
+const { getTodayHoldings } = require('./services/portfolio');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -146,6 +149,25 @@ cron.schedule('0 2 * * *', async () => {
 // 일요일 오전 10:00 - 주간 성과 리포트
 cron.schedule('0 10 * * 0', async () => {
   await runWeeklyReport();
+}, { timezone: 'Asia/Seoul' });
+
+// 금요일 오후 4:30 - 월간 리포트 (마지막 금요일만 실행)
+cron.schedule('30 16 * * 5', async () => {
+  await runMonthlyReport();
+}, { timezone: 'Asia/Seoul' });
+
+// WebSocket: 장 시작(9:00)에 연결
+cron.schedule('0 9 * * 1-5', async () => {
+  try {
+    const holdings = getTodayHoldings();
+    const codes = holdings.map(h => h.stock_code).filter(Boolean);
+    await kisWs.connect(codes);
+  } catch (e) { console.error('[WS] 연결 실패:', e.message); }
+}, { timezone: 'Asia/Seoul' });
+
+// WebSocket: 장 마감(15:35)에 연결 해제
+cron.schedule('35 15 * * 1-5', () => {
+  kisWs.disconnect();
 }, { timezone: 'Asia/Seoul' });
 
 // 매일 오전 7:00 - 카카오 Refresh Token 만료 7일 전 알림

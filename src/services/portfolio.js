@@ -218,6 +218,52 @@ async function getPortfolioSummary() {
   };
 }
 
+function saveDailySeedGrowth() {
+  const db = getDb();
+  const today = getToday();
+
+  const realizedResult = db.prepare(
+    "SELECT COALESCE(SUM(profit_loss), 0) as total FROM trades WHERE date = ? AND trade_type IN ('sell_profit', 'sell_loss', 'switch')"
+  ).get(today);
+
+  const holdingsRow = db.prepare(
+    'SELECT SUM(current_price * quantity) as stockValue FROM holdings WHERE date = ?'
+  ).get(today);
+
+  const cashData = db.prepare(
+    'SELECT COALESCE(cash, 0) as cash FROM portfolio_input WHERE date = ? ORDER BY id DESC LIMIT 1'
+  ).get(today);
+
+  const stockValue = holdingsRow?.stockValue || 0;
+  const cash = cashData?.cash || 0;
+  const totalAssets = stockValue + cash;
+  const realizedPL = realizedResult?.total || 0;
+
+  const yesterday = db.prepare(
+    'SELECT total_assets FROM seed_growth ORDER BY date DESC LIMIT 1'
+  ).get();
+
+  const dailyPL = yesterday ? totalAssets - yesterday.total_assets : 0;
+  const dailyPLRate = yesterday && yesterday.total_assets > 0
+    ? (dailyPL / yesterday.total_assets * 100)
+    : 0;
+
+  const sellCount = db.prepare(
+    "SELECT COUNT(*) as cnt FROM trades WHERE date = ? AND trade_type IN ('sell_profit', 'sell_loss', 'switch')"
+  ).get(today)?.cnt || 0;
+
+  const cashHoldCount = db.prepare(
+    "SELECT COUNT(*) as cnt FROM analysis WHERE date = ? AND cash_recommendation = '현금보유'"
+  ).get(today)?.cnt || 0;
+
+  db.prepare(
+    `INSERT OR REPLACE INTO seed_growth (date, total_assets, stock_value, cash, daily_profit_loss, daily_profit_loss_rate, realized_profit, sell_count, cash_hold_count)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(today, totalAssets, stockValue, cash, dailyPL, Math.round(dailyPLRate * 100) / 100, realizedPL, sellCount, cashHoldCount);
+
+  console.log(`[SeedGrowth] 저장 완료: ${totalAssets.toLocaleString()}원 (실현손익: ${realizedPL.toLocaleString()}원)`);
+}
+
 module.exports = {
   getTodayHoldings,
   saveHoldings,
@@ -230,5 +276,6 @@ module.exports = {
   isAfternoonCutoff,
   isOneHourBeforeClose,
   isFridayAfternoon,
-  getPortfolioSummary
+  getPortfolioSummary,
+  saveDailySeedGrowth
 };

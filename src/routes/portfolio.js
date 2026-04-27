@@ -110,4 +110,90 @@ router.get('/aliases', (req, res) => {
   res.json({ ok: true, data: STOCK_ALIASES });
 });
 
+// GET /api/portfolio/trades - 매매 이력 조회
+router.get('/trades', (req, res) => {
+  try {
+    const db = getDb();
+    const { date, days = 30 } = req.query;
+    let rows;
+    if (date) {
+      rows = db.prepare('SELECT * FROM trades WHERE date = ? ORDER BY created_at DESC').all(date);
+    } else {
+      const since = new Date();
+      since.setDate(since.getDate() - parseInt(days));
+      const sinceStr = since.toISOString().slice(0, 10);
+      rows = db.prepare('SELECT * FROM trades WHERE date >= ? ORDER BY created_at DESC').all(sinceStr);
+    }
+    res.json({ ok: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/portfolio/trades - 매도 완료 / 신규 매수 입력
+router.post('/trades', (req, res) => {
+  try {
+    const db = getDb();
+    const today = getTodayKST();
+    const { trade_type, stock_name, stock_code, quantity, price, avg_price, memo } = req.body;
+
+    if (!trade_type || !stock_name || !quantity || !price) {
+      return res.status(400).json({ ok: false, error: 'trade_type, stock_name, quantity, price 필수' });
+    }
+
+    const qty = parseInt(quantity);
+    const priceN = parseFloat(price);
+    const avgPriceN = parseFloat(avg_price) || null;
+
+    // 실현 손익 계산 (매도 계열만)
+    let profitLoss = null;
+    let profitLossRate = null;
+    if (['sell_profit', 'sell_loss', 'switch'].includes(trade_type) && avgPriceN) {
+      profitLoss = Math.round((priceN - avgPriceN) * qty);
+      profitLossRate = Math.round(((priceN - avgPriceN) / avgPriceN) * 10000) / 100;
+    }
+
+    const alias = resolveAlias(stock_name);
+    const resolvedCode = stock_code || alias.code || '';
+    const resolvedName = alias.name || stock_name;
+
+    // trades 저장
+    db.prepare(
+      'INSERT INTO trades (date, stock_name, stock_code, trade_type, quantity, price, avg_price, profit_loss, profit_loss_rate, memo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(today, resolvedName, resolvedCode, trade_type, qty, priceN, avgPriceN, profitLoss, profitLossRate, memo || null);
+
+    // holdings 처리
+    if (['sell_profit', 'sell_loss', 'switch'].includes(trade_type)) {
+      // 매도: holdings 제거
+      db.prepare('DELETE FROM holdings WHERE stock_code = ? AND date = ?').run(resolvedCode, today);
+      // 전일 데이터도 정리 (종목코드 기준)
+      if (resolvedCode) {
+        const lastDate = db.prepare('SELECT MAX(date) as d FROM holdings WHERE stock_code = ?').get(resolvedCode);
+        if (lastDate?.d) db.prepare('DELETE FROM holdings WHERE stock_code = ? AND date = ?').run(resolvedCode, lastDate.d);
+      }
+    } else if (trade_type === 'buy') {
+      // 신규 매수: holdings 추가
+      const existing = db.prepare('SELECT * FROM holdings WHERE stock_code = ? AND date = ?').get(resolvedCode, today);
+      if (existing) {
+        // 기존 종목이면 평단가 재계산
+        const newQty = existing.quantity + qty;
+        const newAvg = Math.round((existing.avg_price * existing.quantity + priceN * qty) / newQty);
+        db.prepare('UPDATE holdings SET quantity = ?, avg_price = ? WHERE stock_code = ? AND date = ?')
+          .run(newQty, newAvg, resolvedCode, today);
+      } else {
+        db.prepare('INSERT INTO holdings (date, stock_name, stock_code, quantity, avg_price) VALUES (?, ?, ?, ?, ?)')
+          .run(today, resolvedName, resolvedCode, qty, priceN);
+      }
+    }
+
+    res.json({
+      ok: true,
+      message: '매매 기록 저장 완료',
+      data: { profitLoss, profitLossRate }
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 module.exports = router;

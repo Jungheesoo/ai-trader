@@ -3,7 +3,7 @@ const { callSonnet } = require('../services/claude-sonnet');
 const { sendKakao } = require('../services/kakao');
 const { isWeekday } = require('../services/holiday');
 const { sendErrorAlert } = require('../services/alert');
-const { getPortfolioSummary } = require('../services/portfolio');
+const { getPortfolioSummary, saveDailySeedGrowth } = require('../services/portfolio');
 const { getTodayKST } = require('../services/dateutil');
 
 async function runClosingReport() {
@@ -64,29 +64,16 @@ async function runClosingReport() {
 
     const result = await callSonnet(prompt, 'closing_report');
 
-    const message = formatClosingReport(portfolio, sonnetCount, alertCount?.cnt || 0, cashHoldCount?.cnt || 0, result, isBeforeMonday);
+    // 오늘 실현 손익 (trades 테이블 집계)
+    const todayTrades = db.prepare(
+      "SELECT trade_type, SUM(profit_loss) as total, COUNT(*) as cnt FROM trades WHERE date = ? AND trade_type IN ('sell_profit', 'sell_loss', 'switch') GROUP BY trade_type"
+    ).all(today);
+
+    const message = formatClosingReport(portfolio, sonnetCount, alertCount?.cnt || 0, cashHoldCount?.cnt || 0, result, isBeforeMonday, todayTrades);
     await sendKakao(message);
 
-    // 시드 성장 기록
-    const realized = db.prepare(
-      "SELECT SUM(profit_loss) as total FROM analysis WHERE date = ? AND action LIKE '%매도%'"
-    ).get(today);
-
-    const seedStmt = db.prepare(
-      `INSERT OR REPLACE INTO seed_growth (date, total_assets, stock_value, cash, daily_profit_loss, daily_profit_loss_rate, realized_profit, sell_count, cash_hold_count)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    );
-    seedStmt.run(
-      today,
-      portfolio.totalAssets,
-      portfolio.stockValue,
-      portfolio.cash,
-      portfolio.unrealizedPnL || 0,
-      portfolio.overallProfitRate || 0,
-      realized?.total || 0,
-      db.prepare("SELECT COUNT(*) as cnt FROM analysis WHERE date = ? AND action LIKE '%매도%'").get(today)?.cnt || 0,
-      cashHoldCount?.cnt || 0
-    );
+    // 시드 성장 기록 (trades 기반으로 정확한 실현손익 저장)
+    saveDailySeedGrowth();
 
     console.log('[Closing] 마감 리포트 발송 완료');
   } catch (err) {
@@ -95,7 +82,7 @@ async function runClosingReport() {
   }
 }
 
-function formatClosingReport(portfolio, sonnetCount, alertCount, cashHoldCount, ai, isBeforeMonday) {
+function formatClosingReport(portfolio, sonnetCount, alertCount, cashHoldCount, ai, isBeforeMonday, todayTrades = []) {
   const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace('.', '');
   const serverUrl = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
 
@@ -128,6 +115,23 @@ function formatClosingReport(portfolio, sonnetCount, alertCount, cashHoldCount, 
     if (ai.target_price) msg += `🎯 목표가: ${ai.target_price.toLocaleString()}원\n`;
     if (ai.stop_loss) msg += `🛡 손절가: ${ai.stop_loss.toLocaleString()}원\n`;
     if (ai.target_price || ai.stop_loss) msg += '\n';
+  }
+
+  // ── 오늘 실현 손익
+  if (todayTrades && todayTrades.length > 0) {
+    msg += `━━━━━━━━━━━━━━\n💰 오늘 실현 손익\n━━━━━━━━━━━━━━\n`;
+    let netPL = 0;
+    for (const t of todayTrades) {
+      const sign = (t.total || 0) >= 0 ? '+' : '';
+      if (t.trade_type === 'sell_profit' || t.trade_type === 'switch') {
+        msg += `익절: ${sign}${Math.round(t.total || 0).toLocaleString()}원 (${t.cnt}건)\n`;
+      } else if (t.trade_type === 'sell_loss') {
+        msg += `손절: ${Math.round(t.total || 0).toLocaleString()}원 (${t.cnt}건)\n`;
+      }
+      netPL += (t.total || 0);
+    }
+    const netSign = netPL >= 0 ? '+' : '';
+    msg += `순 실현 손익: ${netSign}${Math.round(netPL).toLocaleString()}원\n\n`;
   }
 
   // ── 운영 현황

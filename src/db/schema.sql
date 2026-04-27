@@ -112,6 +112,22 @@ CREATE TABLE IF NOT EXISTS news_cache (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS trades (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  stock_name TEXT NOT NULL,
+  stock_code TEXT NOT NULL,
+  trade_type TEXT NOT NULL,
+  quantity INTEGER NOT NULL,
+  price REAL NOT NULL,
+  avg_price REAL,
+  profit_loss REAL,
+  profit_loss_rate REAL,
+  memo TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(date);
 CREATE INDEX IF NOT EXISTS idx_news_cache_date ON news_cache(date);
 CREATE INDEX IF NOT EXISTS idx_news_cache_url ON news_cache(url);
 CREATE INDEX IF NOT EXISTS idx_analysis_date ON analysis(date);
