@@ -190,10 +190,56 @@ async function getInvestorData(stockCode) {
     });
     const d = res.data.output;
     if (!d || !d.length) throw new Error('수급 데이터 없음');
-    const latest = d[0];
+
+    // 오늘 데이터(d[0]) 외인 빈값이면 전일(d[1]) 사용
+    let dataRow = d[0];
+    let isToday = true;
+    if (!dataRow.frgn_ntby_qty || dataRow.frgn_ntby_qty.trim() === '') {
+      if (d[1]) {
+        dataRow = d[1];
+        isToday = false;
+        console.log(`[KIS] 외인/기관 전일 데이터 사용 (${dataRow.stck_bsop_date || '날짜미상'})`);
+      }
+    }
+
+    const foreignNet = dataRow.frgn_ntby_qty && dataRow.frgn_ntby_qty.trim() !== ''
+      ? parseInt(dataRow.frgn_ntby_qty)
+      : null;
+    const institutionNet = dataRow.orgn_ntby_qty && dataRow.orgn_ntby_qty.trim() !== ''
+      ? parseInt(dataRow.orgn_ntby_qty)
+      : null;
+
+    // 최근 5일 외인 순매수 합산
+    const foreignNet5Days = d.slice(0, 5).reduce((sum, row) => {
+      const val = row.frgn_ntby_qty && row.frgn_ntby_qty.trim() !== '' ? parseInt(row.frgn_ntby_qty) : 0;
+      return sum + (isNaN(val) ? 0 : val);
+    }, 0);
+
+    // 외인 연속 순매수 일수 (오늘 빈값이면 d[1]부터 계산)
+    const startIdx = (!d[0].frgn_ntby_qty || d[0].frgn_ntby_qty.trim() === '') ? 1 : 0;
+    let foreignConsecutiveDays = 0;
+    for (let i = startIdx; i < d.length; i++) {
+      const val = parseInt(d[i].frgn_ntby_qty);
+      if (!isNaN(val) && val > 0) foreignConsecutiveDays++;
+      else break;
+    }
+
+    // 기관 연속 순매수 일수
+    let institutionConsecutiveDays = 0;
+    for (let i = 0; i < d.length; i++) {
+      const val = parseInt(d[i].orgn_ntby_qty);
+      if (!isNaN(val) && val > 0) institutionConsecutiveDays++;
+      else break;
+    }
+
     return {
-      foreignNet: parseInt(latest.frgn_ntby_qty) || 0,
-      institutionNet: parseInt(latest.orgn_ntby_qty) || 0
+      foreignNet: foreignNet ?? null,
+      institutionNet: institutionNet ?? null,
+      dataDate: dataRow.stck_bsop_date || null,
+      isToday,
+      foreignNet5Days,
+      foreignConsecutiveDays,
+      institutionConsecutiveDays
     };
   });
 }

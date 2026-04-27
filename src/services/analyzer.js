@@ -199,6 +199,19 @@ ${isMonday ? '오늘 월요일: 주말 효과 하락 가능. 급락 시 악재 �
 }
 
 async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, context = '', dartDisclosures = []) {
+  if (!enrichedHoldings || enrichedHoldings.length === 0) {
+    console.log('[Sonnet] holdings 없음 → 호출 스킵');
+    return { triggered: false, relevantNews: [], dartDisclosures };
+  }
+  const firstH = enrichedHoldings[0];
+  if (!firstH.current_price) {
+    console.log('[Sonnet] current_price 없음 → 호출 스킵');
+    return { triggered: false, relevantNews: [], dartDisclosures };
+  }
+  if (!firstH.rsi) {
+    console.log('[Sonnet] RSI 없음 → 호출 스킵');
+    return { triggered: false, relevantNews: [], dartDisclosures };
+  }
   // Haiku 비용 제어: 장 중 최대 30건, 긴급 공시 있으면 우선 처리
   const MAX_HAIKU_NEWS = 30;
   const newsToFilter = allNews.slice(0, MAX_HAIKU_NEWS);

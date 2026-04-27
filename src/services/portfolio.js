@@ -2,11 +2,7 @@ const { getDb } = require('../db/database');
 const { getFullStockData } = require('./kis');
 const { getNaverFinancePrice } = require('./naver');
 const { getTodayKST } = require('./dateutil');
-
-// KIS 연속 실패 카운터 (프롬프트 섹션 8-4)
-let kisFailCount = 0;
-let kisBackupMode = false;
-let kisBackupAlertSent = false;
+const { isMarketOpen } = require('../utils/market');
 
 function getToday() {
   return getTodayKST();
@@ -50,44 +46,47 @@ function savePortfolioInput(date, cash, newInvestment) {
 }
 
 async function enrichHoldingsWithPrices(holdings) {
+  const db = getDb();
+  const today = getToday();
+  const marketOpen = isMarketOpen();
   const enriched = [];
+
   for (const h of holdings) {
     let stockData = null;
-    if (h.stock_code) {
-      // KIS 백업모드가 아니면 먼저 KIS 시도
-      if (!kisBackupMode) {
-        stockData = await getFullStockData(h.stock_code);
-      }
 
-      if (!stockData) {
-        kisFailCount++;
-        if (!kisBackupMode) {
-          kisBackupMode = true;
-          if (!kisBackupAlertSent) {
-            kisBackupAlertSent = true;
-            try {
-              const { sendErrorAlert } = require('./alert');
-              await sendErrorAlert('⚠️ [KIS API 장애] 한국투자증권 API 실패. 네이버 금융 데이터로 자동 전환합니다.');
-            } catch (e) { /* silent */ }
+    if (h.stock_code) {
+      if (marketOpen) {
+        // 장 중: KIS 먼저 시도, 실패 시 해당 종목만 네이버 백업 (고착 없음)
+        stockData = await getFullStockData(h.stock_code);
+        if (!stockData) {
+          console.warn(`[Portfolio] KIS 실패(${h.stock_code}) → 네이버 백업`);
+          try {
+            const { sendErrorAlert } = require('./alert');
+            await sendErrorAlert(`⚠️ [KIS API 장애] ${h.stock_name} 데이터 조회 실패. 네이버 금융으로 전환합니다.`);
+          } catch (e) { /* silent */ }
+          const backup = await getNaverFinancePrice(h.stock_code);
+          if (backup) {
+            stockData = { price: backup.price, source: 'naver_backup', delayed: true };
           }
         }
-        // 네이버 백업
-        const backup = await getNaverFinancePrice(h.stock_code);
-        if (backup) {
-          stockData = { price: backup.price, source: 'naver_backup', delayed: true };
-        }
       } else {
-        kisFailCount = 0;
-        if (kisBackupMode) {
-          kisBackupMode = false;
-          kisBackupAlertSent = false;
-        }
+        // 장 외: KIS/네이버 호출 없이 DB 저장값 사용
+        console.log(`[Portfolio] 장 외 시간 → ${h.stock_code} KIS 호출 스킵, DB 저장값 사용`);
       }
     }
 
     const currentPrice = stockData?.price || h.current_price || h.avg_price;
     const profitLoss = (currentPrice - h.avg_price) * h.quantity;
     const profitLossRate = ((currentPrice - h.avg_price) / h.avg_price) * 100;
+
+    // 장 중 현재가 DB 즉시 업데이트
+    if (marketOpen && stockData?.price && h.stock_code) {
+      try {
+        db.prepare(
+          'UPDATE holdings SET current_price = ?, profit_loss = ?, profit_loss_rate = ? WHERE date = ? AND stock_code = ?'
+        ).run(stockData.price, Math.round(profitLoss), Math.round(profitLossRate * 100) / 100, today, h.stock_code);
+      } catch (e) { /* DB 업데이트 실패 무시 */ }
+    }
 
     enriched.push({
       ...h,
