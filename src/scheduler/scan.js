@@ -124,14 +124,25 @@ async function runScan() {
 
         if (!rsi || !macd) continue;
 
+        // 잡주 자동 제외: 최근 5일 +30% 이상 급등
+        const recentCloses = closes.slice(-6);
+        if (recentCloses.length >= 6) {
+          const fiveDayReturn = (recentCloses[recentCloses.length - 1] - recentCloses[0]) / recentCloses[0] * 100;
+          if (fiveDayReturn >= 30) continue;
+        }
+        // 잡주 자동 제외: 거래량 50배 이상 급증
+        if (volumeRatio && volumeRatio >= 50) continue;
+
         // 단기 모멘텀 스코어 계산
         let score = 0;
-        if (rsi >= 40 && rsi <= 65) score += 2;
-        if (macd?.crossover === '골든크로스') score += 3;
-        if (macd?.crossover === '상승중') score += 1;
-        if (volumeRatio && volumeRatio >= 1.5) score += 2;
-        if (investorData?.foreignNet > 0) score += 1;
-        if (investorData?.institutionNet > 0) score += 1;
+        const scoreReasons = [];
+        if (rsi >= 40 && rsi <= 65) { score += 2; scoreReasons.push(`RSI ${rsi}`); }
+        if (macd?.crossover === '골든크로스') { score += 3; scoreReasons.push('골든크로스'); }
+        if (macd?.crossover === '상승중') { score += 1; scoreReasons.push('MACD상승'); }
+        if (volumeRatio && volumeRatio >= 1.5) { score += 2; scoreReasons.push(`거래량${volumeRatio}배`); }
+        if (investorData?.foreignNet > 0) { score += 1; scoreReasons.push('외인매수'); }
+        if (investorData?.institutionNet > 0) { score += 1; scoreReasons.push('기관매수'); }
+        if (investorData?.foreignConsecutiveDays >= 3) { score += 1; scoreReasons.push(`외인${investorData.foreignConsecutiveDays}일연속`); }
 
         results.push({
           stock_name: stock.name,
@@ -139,9 +150,10 @@ async function runScan() {
           rsi,
           macd: macd.crossover,
           volume_ratio: volumeRatio,
-          foreign_net: investorData?.foreignNet || 0,
-          institution_net: investorData?.institutionNet || 0,
-          score
+          foreign_net: investorData?.foreignNet ?? 0,
+          institution_net: investorData?.institutionNet ?? 0,
+          score,
+          reason: scoreReasons.join(', ') || `스코어: ${score}`
         });
       } catch (err) {
         console.warn(`[Scan] ${stock.name} 스캔 실패:`, err.message);
@@ -156,7 +168,7 @@ async function runScan() {
       'INSERT INTO watchlist (date, stock_name, stock_code, rsi, macd, volume_ratio, foreign_net, institution_net, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     for (const r of top20) {
-      stmt.run(today, r.stock_name, r.stock_code, r.rsi, r.macd, r.volume_ratio, r.foreign_net, r.institution_net, `스코어: ${r.score}`);
+      stmt.run(today, r.stock_name, r.stock_code, r.rsi, r.macd, r.volume_ratio, r.foreign_net, r.institution_net, r.reason || `스코어: ${r.score}`);
     }
 
     console.log(`[Scan] 완료. 상위 ${top20.length}종목 저장.`);

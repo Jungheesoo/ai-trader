@@ -99,28 +99,46 @@ function buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, co
   const isFriday = now.getDay() === 5;
   const isMonday = now.getDay() === 1;
 
-  const holdingsText = enrichedHoldings.map(h => `
+  const holdingsText = enrichedHoldings.map(h => {
+    // 코드에서 계산 (Sonnet은 계산 안 함)
+    const shortTarget = h.current_price ? Math.round(h.current_price * 1.05) : null;
+    const stopLoss = h.avg_price ? Math.round(h.avg_price * 0.95) : null;
+    const bbText = h.bollingerBands
+      ? `상단 ${h.bollingerBands.upper.toLocaleString()} / 중단 ${h.bollingerBands.middle.toLocaleString()} / 하단 ${h.bollingerBands.lower.toLocaleString()}`
+      : '데이터없음';
+    const investorDateNote = h.investorDataDate
+      ? (h.investorIsToday ? '(오늘)' : `(전일 ${h.investorDataDate})`)
+      : '';
+
+    return `
 종목: ${h.stock_name} (${h.stock_code || '-'})
-보유수량: ${h.quantity}주
-평단가: ${h.avg_price.toLocaleString()}원
-현재가: ${h.current_price.toLocaleString()}원
-수익률: ${h.profit_loss_rate}% (${h.profit_loss > 0 ? '+' : ''}${h.profit_loss.toLocaleString()}원)
-RSI: ${h.rsi ?? '데이터없음'}
-MACD: ${h.macd ?? '데이터없음'}
-거래량배수: ${h.volumeRatio ?? '데이터없음'}
-외국인순매수: ${h.foreignNet?.toLocaleString() ?? '데이터없음'}주
-기관순매수: ${h.institutionNet?.toLocaleString() ?? '데이터없음'}주
-트레일링스탑: ${h.trailingStop?.toLocaleString() ?? '데이터없음'}원`
-  ).join('\n---');
+보유수량: ${h.quantity}주 / 평단가: ${h.avg_price.toLocaleString()}원
+현재가: ${h.current_price.toLocaleString()}원 / 수익률: ${h.profit_loss_rate}% (${h.profit_loss >= 0 ? '+' : ''}${h.profit_loss.toLocaleString()}원)
+RSI: ${h.rsi ?? '데이터없음'} / MACD: ${h.macd ?? '데이터없음'} / 거래량배수: ${h.volumeRatio ?? '데이터없음'}
+볼린저밴드: ${bbText}
+외국인순매수: ${h.foreignNet !== null ? h.foreignNet.toLocaleString() + '주' : '데이터없음'} ${investorDateNote}
+외인5일합산: ${h.foreignNet5Days !== null ? h.foreignNet5Days.toLocaleString() + '주' : '데이터없음'}
+외인연속순매수: ${h.foreignConsecutiveDays !== null ? h.foreignConsecutiveDays + '일' : '데이터없음'}
+기관순매수: ${h.institutionNet !== null ? h.institutionNet.toLocaleString() + '주' : '데이터없음'} ${investorDateNote}
+기관연속순매수: ${h.institutionConsecutiveDays !== null ? h.institutionConsecutiveDays + '일' : '데이터없음'}
+트레일링스탑: ${h.trailingStop?.toLocaleString() ?? '데이터없음'}원
+단기목표가(시스템계산+5%): ${shortTarget?.toLocaleString() ?? '데이터없음'}원
+손절가(시스템계산-5%): ${stopLoss?.toLocaleString() ?? '데이터없음'}원`;
+  }).join('\n---');
 
   const usMarketText = usMarket.length > 0
     ? usMarket.map(m => `${m.name}: ${m.changeRate !== null ? (m.changeRate >= 0 ? '+' : '') + m.changeRate + '%' : '데이터없음'}`).join(' / ')
     : '데이터없음 (크롤링 실패)';
 
+  // 뉴스 최적화: 최대 5건, 제목 + 50자 요약만 전달 (Sonnet 입력 토큰 절감)
   const newsText = relevantNews.length > 0
-    ? relevantNews.map(n =>
-        `[${n.source || n.news?.source}] ${n.title || n.news?.title} (영향:${n.impact || '중립'}, 긴급도:${n.urgency || '정보'})\n${(n.content || n.summary || n.news?.content || n.news?.summary || '').slice(0, 300)}`
-      ).join('\n\n')
+    ? relevantNews.slice(0, 5).map(n => {
+        const title = n.title || n.news?.title || '';
+        const summary = (n.summary || n.content || n.news?.summary || n.news?.content || '').slice(0, 50);
+        const impact = n.impact || '중립';
+        const urgency = n.urgency || '정보';
+        return `[${impact}/${urgency}] ${title}${summary ? ' — ' + summary : ''}`;
+      }).join('\n')
     : '영향 뉴스 없음';
 
   // DART 공시 텍스트
@@ -130,10 +148,11 @@ MACD: ${h.macd ?? '데이터없음'}
       ).join('\n')
     : '신규 공시 없음';
 
-  // 관심 종목 vs 보유 종목 비교 텍스트
-  const watchlistText = (watchlist || []).slice(0, 10).map(w =>
-    `${w.stock_name}: RSI ${w.rsi}, MACD ${w.macd}, 거래량배수 ${w.volume_ratio}`
-  ).join('\n');
+  // watchlist 상위 5종목 (갈아타기 후보 비교용)
+  const watchlistText = (watchlist || []).slice(0, 5).map(w => {
+    const foreignDir = w.foreign_net > 0 ? '외인매수' : w.foreign_net < 0 ? '외인매도' : '외인중립';
+    return `${w.stock_name}(${w.stock_code || '-'}): RSI ${w.rsi ?? '-'}, MACD ${w.macd ?? '-'}, 거래량배수 ${w.volume_ratio ?? '-'}, ${foreignDir}`;
+  }).join('\n');
 
   // Haiku가 뉴스에서 포착한 신규 진입 후보 종목
   const candidateText = candidateStocks.length > 0

@@ -75,7 +75,66 @@ async function getNaverFinancePrice(stockCode) {
   }
 }
 
-// getNaverNews: getStockNews의 alias (analyzer에서 사용)
-const getNaverNews = getStockNews;
+// 시장 전체 키워드 (보유 종목 외 시장 흐름 파악용)
+const MARKET_KEYWORDS = [
+  '코스피', '코스닥', '외국인 순매수', '반도체 주가', '방산 주가', '원전 수주', '환율 달러', '나스닥'
+];
 
-module.exports = { searchNews, crawlArticle, getStockNews, getNaverNews, getNaverFinancePrice };
+async function getMarketNews() {
+  const results = [];
+  const seen = new Set();
+  for (const kw of MARKET_KEYWORDS) {
+    const items = await searchNews(kw, 3);
+    for (const item of items) {
+      const url = item.originallink || item.link;
+      if (seen.has(url)) continue;
+      seen.add(url);
+      results.push({
+        title: item.title.replace(/<[^>]*>/g, ''),
+        url,
+        summary: item.description.replace(/<[^>]*>/g, ''),
+        content: null,
+        publishedAt: item.pubDate,
+        source: '네이버 시장'
+      });
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return results;
+}
+
+// getNaverNews: 보유 종목 뉴스 + 시장 전체 뉴스 합산
+async function getNaverNews(stockNameOrKeyword) {
+  const stockNews = await getStockNews(stockNameOrKeyword);
+  return stockNews;
+}
+
+// getNaverNewsWithMarket: 보유 종목 + 시장 전체 통합 수집
+async function getNaverNewsWithMarket(holdings) {
+  const seen = new Set();
+  const results = [];
+
+  for (const h of holdings) {
+    if (!h.stock_name) continue;
+    const items = await getStockNews(h.stock_name);
+    for (const item of items) {
+      if (item.url && !seen.has(item.url)) {
+        seen.add(item.url);
+        results.push(item);
+      }
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  const marketNews = await getMarketNews();
+  for (const item of marketNews) {
+    if (item.url && !seen.has(item.url)) {
+      seen.add(item.url);
+      results.push(item);
+    }
+  }
+
+  return results;
+}
+
+module.exports = { searchNews, crawlArticle, getStockNews, getNaverNews, getNaverFinancePrice, getMarketNews, getNaverNewsWithMarket };

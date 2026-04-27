@@ -67,7 +67,7 @@ async function filterNews(newsText, holdings, watchlistNames = []) {
       'https://api.anthropic.com/v1/messages',
       {
         model: MODEL,
-        max_tokens: 300,
+        max_tokens: 150,
         temperature: 0,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: prompt }]
@@ -120,8 +120,10 @@ async function filterNewsBatch(newsList, holdings, watchlistNames = []) {
       continue;
     }
 
-    const source = news.content ? '본문' : '요약본';
-    const result = await filterNews(`[${source}]\n${titleAndText}`, holdings, watchlistNames);
+    // 입력 최적화: 제목 + 본문 첫 200자만 전달
+    const bodyText = (news.content || news.summary || '').slice(0, 200);
+    const trimmedText = `${news.title || ''}\n${bodyText}`;
+    const result = await filterNews(trimmedText, holdings, watchlistNames);
     results.push({
       ...news,
       relevant: result?.relevant ?? false,
