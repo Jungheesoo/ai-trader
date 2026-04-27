@@ -1,19 +1,20 @@
 # AI 트레이더 시스템
 
-나만을 위한 완전 자동화 AI 트레이더. Node.js + SQLite + Claude API.
-Google Cloud 서버에서 24시간 자동 운영. 카카오톡으로 알림.
+나만을 위한 AI 투자 보조 시스템. Node.js + SQLite + Claude API.
+Google Cloud 서버에서 24시간 분석·알림 자동화. 실제 매매는 텔레그램 알림 수신 후 직접 수동 체결.
 
 ---
 
 ## 1. 시스템 전체 구조
 
 ```
-오전 8:00  → 카카오톡 웹 UI 링크 발송 + 전체 종목 퀀트 스캔
-오전 8:30  → Claude Sonnet 모닝 리포트 → 카카오톡 발송
-장 중 30분마다 → 퀀트 계산 → Haiku 뉴스 필터 → 이상 시 Sonnet 분석 → 카카오톡 알림
-오후 4:00  → Sonnet 마감 리포트 → 카카오톡 발송
+오전 8:00  → 텔레그램 웹 UI 링크 발송 + 전체 종목 퀀트 스캔
+오전 8:30  → Claude Sonnet 모닝 리포트 → 텔레그램 발송
+장 중 30분마다 → 퀀트 계산 → Haiku 뉴스 필터 → 이상 시 Sonnet 분석 → 텔레그램 알림
+오후 4:00  → Sonnet 마감 리포트 → 텔레그램 발송
 밤 11시/새벽 2시 → RSS + Haiku만 (Sonnet 없음)
 일요일 10:00 → 주간 성과 리포트 (Sonnet 없음)
+마지막 금요일 16:30 → 월간 성과 리포트 (Sonnet 1회)
 ```
 
 AI 3단계 구조:
@@ -74,29 +75,23 @@ npm install
 
 ---
 
-## 5. 카카오 개발자센터 설정 (나에게 보내기)
+## 5. 텔레그램 봇 설정
 
-1. https://developers.kakao.com 접속 → 애플리케이션 추가
-2. 플랫폼 → Web → 사이트 도메인: `http://<서버IP>:3000`
-3. 제품 설정 → 카카오 로그인 → 활성화
-4. Redirect URI: `http://<서버IP>:3000/oauth`
-5. 동의항목 → 카카오톡 메시지 전송 → 필수 동의
-6. **Access Token 최초 발급** (브라우저에서 1회):
+1. 텔레그램 앱에서 `@BotFather` 검색 → `/newbot` → 봇 이름 입력
+2. 발급된 **Bot Token** 복사 (형식: `123456789:AAFxxx...`)
+3. 만든 봇을 검색해서 `/start` 전송 (아무 메시지나 보내기)
+4. 브라우저에서 Chat ID 확인:
+   ```
+   https://api.telegram.org/bot<BOT_TOKEN>/getUpdates
+   ```
+   응답의 `"chat":{"id": 숫자}` 값이 **Chat ID**
+5. `.env`에 입력:
+   ```
+   TELEGRAM_BOT_TOKEN=발급받은_봇_토큰
+   TELEGRAM_CHAT_ID=확인한_채팅_ID
+   ```
 
-```
-https://kauth.kakao.com/oauth/authorize?client_id=<REST_API_KEY>&redirect_uri=<REDIRECT_URI>&response_type=code&scope=talk_message
-```
-
-7. 리다이렉트된 URL에서 `code=` 값 복사
-8. Access Token 발급:
-
-```bash
-curl -X POST https://kauth.kakao.com/oauth/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=authorization_code&client_id=<REST_API_KEY>&redirect_uri=<REDIRECT_URI>&code=<CODE>"
-```
-
-9. 응답의 `access_token`, `refresh_token` → `.env`에 입력
+> 카카오와 달리 토큰 만료 없음. 최초 설정 후 재발급 불필요.
 
 ---
 
@@ -138,11 +133,8 @@ KIS_APP_SECRET=...
 KIS_ACCOUNT_NO=12345678-01
 KIS_BASE_URL=https://openapi.koreainvestment.com:9443
 
-KAKAO_CLIENT_ID=...
-KAKAO_CLIENT_SECRET=...
-KAKAO_REDIRECT_URI=http://<서버IP>:3000/oauth
-KAKAO_ACCESS_TOKEN=...
-KAKAO_REFRESH_TOKEN=...
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
 
 NAVER_CLIENT_ID=...
 NAVER_CLIENT_SECRET=...
@@ -180,7 +172,7 @@ http://<서버IP>:3000
 
 화면 구성:
 - `/` : 메인 대시보드 (총 자산, 보유 종목, AI 분석 요약)
-- `/portfolio` : 자산현황 입력 (매일 오전 8시 카카오톡 링크)
+- `/portfolio` : 자산현황 입력 (매일 오전 8시 텔레그램 링크)
 - `/chat` : AI 실시간 질문
 - `/history` : 분석 이력 및 성과 통계
 
@@ -268,14 +260,10 @@ const LUNAR_HOLIDAYS_2027 = [
 pm2 restart ai-trader
 ```
 
-**카카오 Access Token 만료 (401 오류)**
-- 시스템이 6시간마다 자동 갱신
-- 갱신 실패 시 카카오톡 알림 발송됨
-- 수동 갱신: 5번 항목 참고하여 새 토큰 발급 후 `.env` 업데이트
-
-**카카오 Refresh Token 만료 (만료 7일 전 알림)**
-- 60일마다 만료. 시스템이 7일 전 카카오톡 알림 발송
-- 만료 전 5번 항목부터 다시 진행하여 새 토큰 발급
+**텔레그램 메시지 미수신**
+- `.env`의 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` 확인
+- 봇에게 `/start` 또는 아무 메시지를 먼저 보내야 수신 가능
+- 토큰 만료 없음 — 재발급 불필요
 
 **메모리 초과 (PM2 자동 재시작)**
 ```bash
@@ -297,7 +285,7 @@ pm2 restart ai-trader
 □ pm2 status → ai-trader online 상태
 □ pm2 logs → 오류 없음
 □ /api/health → {"ok":true} 응답
-□ 카카오톡 테스트 메시지 수신 확인
+□ 텔레그램 테스트 메시지 수신 확인
 □ .env 파일 모든 항목 입력 완료
 □ Anthropic Console 월 $5 한도 설정 완료
 □ portfolio.html에서 자산 입력 → 저장 성공
@@ -453,29 +441,27 @@ pm2 startup
 
 ---
 
-### Step 9. 카카오 설정 업데이트
+### Step 9. 텔레그램 봇 설정
 
-1. https://developers.kakao.com → ai-trader 앱 → **카카오 로그인 → Redirect URI 추가**:
+1. 텔레그램 앱에서 `@BotFather` → `/newbot` → 봇 이름 입력 → Bot Token 발급
+2. 만든 봇 검색 → `/start` 전송
+3. 브라우저에서 Chat ID 확인:
    ```
-   http://서버외부IP:3000/auth/kakao/callback
+   https://api.telegram.org/bot<BOT_TOKEN>/getUpdates
    ```
+   응답에서 `"chat":{"id": 숫자}` 값 복사
 
-2. 브라우저에서 Access Token 발급:
-   ```
-   http://서버외부IP:3000/auth/kakao/login
-   ```
-   → 카카오 로그인 → 동의 → 화면에 표시된 토큰 복사
-
-3. `.env` 업데이트:
+4. 서버 `.env` 업데이트:
    ```bash
    nano .env
-   # KAKAO_ACCESS_TOKEN=발급받은토큰
-   # KAKAO_REFRESH_TOKEN=발급받은리프레시토큰
+   # TELEGRAM_BOT_TOKEN=발급받은_봇_토큰
+   # TELEGRAM_CHAT_ID=확인한_채팅_ID
    ```
 
-4. 서버 재시작:
+5. 서버 재시작 및 테스트:
    ```bash
    pm2 restart ai-trader
+   # 텔레그램으로 테스트 메시지 수신 확인
    ```
 
 ---
@@ -519,7 +505,7 @@ pm2 status  # ai-trader: online ✅
 | pm2 start 후 errored | .env 누락 또는 npm install 미실행 | `pm2 logs ai-trader` 로 확인 |
 | 브라우저 접속 안 됨 | 포트 3000 방화벽 미설정 | Step 3 재확인 |
 | KIS API 403 | 서버 IP 미등록 | Step 10 진행 |
-| 카카오 토큰 오류 | Redirect URI 불일치 | Step 9 재확인 |
+| 텔레그램 미수신 | BOT_TOKEN 또는 CHAT_ID 오류 | Step 9 재확인, 봇에 /start 전송 확인 |
 
 ---
 
@@ -541,23 +527,14 @@ pm2 status  # ai-trader: online ✅
 #### API 키 발급
 - [x] Claude API 키 + Anthropic Console 월 $5 한도 설정
 - [x] 한투 KIS App Key / App Secret / 계좌번호
-- [ ] 카카오 REST API 키 (**채팅창 노출로 재발급 필수**)
-- [ ] 카카오 Client Secret (**채팅창 노출로 재발급 필수**)
+- [x] 텔레그램 Bot Token + Chat ID (Step 5 참고)
 - [x] 네이버 Client ID / Client Secret
 - [x] DART API 키
-
-#### 카카오 설정
-- [x] 카카오 로그인 활성화 ON
-- [ ] Redirect URI 등록 (로컬 + 서버 IP)
-- [ ] 동의항목: 카카오톡 메시지 전송 ON
-- [ ] Access Token / Refresh Token 발급 및 저장
 
 #### .env 파일
 - [x] CLAUDE_API_KEY, 모델명, 호출 제한값
 - [x] KIS_APP_KEY, KIS_APP_SECRET, KIS_ACCOUNT_NO
-- [ ] KAKAO_CLIENT_ID (재발급 후 입력)
-- [ ] KAKAO_CLIENT_SECRET (재발급 후 입력)
-- [ ] KAKAO_REDIRECT_URI, KAKAO_ACCESS_TOKEN, KAKAO_REFRESH_TOKEN
+- [x] TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 - [x] NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
 - [x] DART_API_KEY
 - [ ] SERVER_IP (Google Cloud 외부 IP)
@@ -571,14 +548,13 @@ pm2 status  # ai-trader: online ✅
 - [ ] git clone + npm install (Step 6)
 - [ ] 서버에 .env 파일 생성 (Step 7)
 - [ ] pm2 start + pm2 startup + pm2 save (Step 8)
-- [ ] 카카오 Redirect URI 서버 IP 추가 + 토큰 재발급 (Step 9)
+- [ ] 텔레그램 봇 설정 + 테스트 메시지 확인 (Step 9)
 - [ ] KIS Developers에 서버 IP 등록 (Step 10)
-- [ ] 웹 UI + 카카오톡 알림 최종 확인 (Step 11)
+- [ ] 웹 UI + 텔레그램 알림 최종 확인 (Step 11)
 
 #### 보안
-- [ ] 카카오 REST API 키 재발급 (노출됨)
-- [ ] 카카오 Client Secret 재발급 (노출됨)
 - [x] .env .gitignore 등록 확인
+- [ ] .env.example에 실제 키 없는지 확인
 
 #### 향후 구현 예정
 - [ ] history.html AI 적중률 입력 버튼 (correct/incorrect)

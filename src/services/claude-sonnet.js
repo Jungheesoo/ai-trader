@@ -7,7 +7,7 @@ const API_KEY = process.env.CLAUDE_API_KEY;
 
 const SYSTEM_PROMPT = `당신은 한국 주식 단기 투자 분석 전문가입니다.
 사용자는 1달 이내 단기 익절 반복으로 시드 복리 성장이 목표입니다.
-회사 근무 중이라 카카오톡 알림 후 5초 안에 판단해야 합니다.
+회사 근무 중이라 텔레그램 알림 후 5초 안에 판단해야 합니다.
 돈이 걸린 문제이므로 확실한 근거 없으면 반드시 판단불가 출력.
 
 [투자 철학 - 시드 복리 성장]
@@ -96,7 +96,7 @@ async function callSonnet(userPrompt, callerTag = '') {
   const check = canCallSonnet();
   if (!check.allowed) {
     console.warn(`[Sonnet][${callerTag}] 호출 차단: ${check.reason}`);
-    // 하루 15회 한도 도달 시 카카오 알림 (1회만)
+    // 하루 15회 한도 도달 시 텔레그램 알림 (1회만)
     const maxDay = parseInt(process.env.CLAUDE_SONNET_MAX_CALLS_PER_DAY) || 15;
     if (check.reason.includes(`최대 ${maxDay}회`)) {
       try {

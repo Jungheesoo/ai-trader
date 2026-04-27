@@ -10,7 +10,6 @@ const portfolioRoute = require('./routes/portfolio');
 const chatRoute = require('./routes/chat');
 const historyRoute = require('./routes/history');
 
-const { checkRefreshTokenExpiry } = require('./services/kakao');
 const { runMorningLink } = require('./scheduler/morning');
 const { runScan } = require('./scheduler/scan');
 const { runMorningReport } = require('./scheduler/report');
@@ -44,56 +43,6 @@ app.get('/history', (req, res) => res.sendFile(path.join(__dirname, 'public', 'h
 
 // 헬스체크
 app.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
-
-// ─── 카카오 OAuth (최초 1회 토큰 발급용) ──────────────────────
-// 1단계: 브라우저에서 /auth/kakao/login 접속 → 카카오 로그인 페이지로 이동
-app.get('/auth/kakao/login', (req, res) => {
-  const clientId = process.env.KAKAO_CLIENT_ID;
-  const redirectUri = encodeURIComponent(process.env.KAKAO_REDIRECT_URI);
-  const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code`;
-  res.redirect(kakaoAuthUrl);
-});
-
-// 2단계: 카카오가 code를 들고 이 URL로 돌아옴 → Access/Refresh Token 교환 후 화면에 출력
-app.get('/auth/kakao/callback', async (req, res) => {
-  const { code, error } = req.query;
-  if (error || !code) {
-    return res.send(`<h2>카카오 인증 실패</h2><p>${error || '코드 없음'}</p>`);
-  }
-  try {
-    const axios = require('axios');
-    const tokenRes = await axios.post('https://kauth.kakao.com/oauth/token', null, {
-      params: {
-        grant_type: 'authorization_code',
-        client_id: process.env.KAKAO_CLIENT_ID,
-        client_secret: process.env.KAKAO_CLIENT_SECRET,
-        redirect_uri: process.env.KAKAO_REDIRECT_URI,
-        code
-      },
-      timeout: 10000
-    });
-    const { access_token, refresh_token } = tokenRes.data;
-    res.send(`
-      <html><head><meta charset="UTF-8"><title>카카오 토큰 발급 완료</title>
-      <style>body{font-family:sans-serif;max-width:600px;margin:40px auto;padding:0 16px}
-      .box{background:#f0f1f5;border-radius:8px;padding:16px;margin:12px 0;word-break:break-all;font-size:13px}
-      h2{color:#16a34a}p{color:#374151;font-size:14px}</style></head><body>
-      <h2>✅ 카카오 토큰 발급 완료</h2>
-      <p>아래 두 값을 복사해서 <strong>.env</strong> 파일에 붙여넣으세요.</p>
-      <p><strong>KAKAO_ACCESS_TOKEN=</strong></p>
-      <div class="box">${access_token}</div>
-      <p><strong>KAKAO_REFRESH_TOKEN=</strong></p>
-      <div class="box">${refresh_token}</div>
-      <p style="color:#6b7280;font-size:12px">
-        ⚠️ 이 페이지를 닫으면 토큰이 사라집니다. 반드시 저장하세요.<br>
-        Refresh Token은 60일마다 재발급이 필요합니다.
-      </p>
-      </body></html>
-    `);
-  } catch (err) {
-    res.send(`<h2>토큰 교환 실패</h2><pre>${err.response?.data ? JSON.stringify(err.response.data, null, 2) : err.message}</pre>`);
-  }
-});
 
 // ─── 스케줄러 ───────────────────────────────────────────
 
@@ -170,10 +119,6 @@ cron.schedule('35 15 * * 1-5', () => {
   kisWs.disconnect();
 }, { timezone: 'Asia/Seoul' });
 
-// 매일 오전 7:00 - 카카오 Refresh Token 만료 7일 전 알림
-cron.schedule('0 7 * * *', async () => {
-  await checkRefreshTokenExpiry();
-}, { timezone: 'Asia/Seoul' });
 
 // ─── 서버 시작 ───────────────────────────────────────────
 async function start() {
@@ -182,12 +127,12 @@ async function start() {
     console.log('[DB] 초기화 완료');
 
     // 필수 환경변수 경고
-    const requiredEnv = ['CLAUDE_API_KEY', 'KIS_APP_KEY', 'KIS_APP_SECRET', 'KAKAO_ACCESS_TOKEN', 'KAKAO_REFRESH_TOKEN'];
+    const requiredEnv = ['CLAUDE_API_KEY', 'KIS_APP_KEY', 'KIS_APP_SECRET', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'];
     for (const key of requiredEnv) {
       if (!process.env[key]) console.warn(`[Config] ⚠️  ${key} 미설정`);
     }
     if (!process.env.SERVER_IP || process.env.SERVER_IP.includes('여기에')) {
-      console.warn('[Config] ⚠️  SERVER_IP 미설정 - 카카오 링크가 localhost로 표시됩니다. .env의 SERVER_IP를 서버 공인 IP로 변경하세요.');
+      console.warn('[Config] ⚠️  SERVER_IP 미설정 - 링크가 localhost로 표시됩니다.');
     }
 
     app.listen(PORT, '0.0.0.0', () => {

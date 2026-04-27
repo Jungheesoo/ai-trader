@@ -359,7 +359,7 @@ async function runAnalysisPipeline(portfolioSummary) {
 
     dartDisclosures = await checkNewDisclosures(holdings);
 
-    // 중요 공시(긴급/호재/실적) 즉시 카카오 알림
+    // 중요 공시(긴급/호재/실적) 즉시 텔레그램 알림
     const notifyDart = dartDisclosures.filter(d => d.isImportant);
     for (const d of notifyDart) {
       let msg = `${d.icon} [DART 공시] ${d.stockName}\n\n`;
