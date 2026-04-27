@@ -2,7 +2,7 @@ const { getDb } = require('../db/database');
 const { getFullStockData } = require('./kis');
 const { getNaverFinancePrice } = require('./naver');
 const { getTodayKST } = require('./dateutil');
-const { isMarketOpen } = require('../utils/market');
+const { getMarketStatus } = require('../utils/market');
 
 function getToday() {
   return getTodayKST();
@@ -48,15 +48,16 @@ function savePortfolioInput(date, cash, newInvestment) {
 async function enrichHoldingsWithPrices(holdings) {
   const db = getDb();
   const today = getToday();
-  const marketOpen = isMarketOpen();
+  const marketStatus = getMarketStatus(); // regular / pre / after / break / closed
+  const shouldCallKIS = marketStatus !== 'closed';
   const enriched = [];
 
   for (const h of holdings) {
     let stockData = null;
 
     if (h.stock_code) {
-      if (marketOpen) {
-        // 장 중: KIS 먼저 시도, 실패 시 해당 종목만 네이버 백업 (고착 없음)
+      if (shouldCallKIS) {
+        // 정규장 + 프리마켓 + 애프터마켓: KIS 호출
         stockData = await getFullStockData(h.stock_code);
         if (!stockData) {
           console.warn(`[Portfolio] KIS 실패(${h.stock_code}) → 네이버 백업`);
@@ -70,8 +71,8 @@ async function enrichHoldingsWithPrices(holdings) {
           }
         }
       } else {
-        // 장 외: KIS/네이버 호출 없이 DB 저장값 사용
-        console.log(`[Portfolio] 장 외 시간 → ${h.stock_code} KIS 호출 스킵, DB 저장값 사용`);
+        // 완전 휴장(18:00~08:00, 주말): KIS/네이버 호출 없이 DB 저장값 사용
+        console.log(`[Portfolio] 휴장(${marketStatus}) → ${h.stock_code} KIS 호출 스킵, DB 저장값 사용`);
       }
     }
 
@@ -79,8 +80,8 @@ async function enrichHoldingsWithPrices(holdings) {
     const profitLoss = (currentPrice - h.avg_price) * h.quantity;
     const profitLossRate = ((currentPrice - h.avg_price) / h.avg_price) * 100;
 
-    // 장 중 현재가 DB 즉시 업데이트
-    if (marketOpen && stockData?.price && h.stock_code) {
+    // KIS 호출 성공 시 현재가 DB 즉시 업데이트 (정규장 + 프리/애프터마켓 포함)
+    if (shouldCallKIS && stockData?.price && h.stock_code) {
       try {
         db.prepare(
           'UPDATE holdings SET current_price = ?, profit_loss = ?, profit_loss_rate = ? WHERE date = ? AND stock_code = ?'
