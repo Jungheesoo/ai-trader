@@ -5,6 +5,62 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>AI 트레이더</title>
 <link rel="stylesheet" href="/style.css">
+<style>
+/* ── 가격 플래시 ── */
+@keyframes flash-up {
+  0%   { color: #4ade80; text-shadow: 0 0 10px rgba(74,222,128,0.7); }
+  100% { color: inherit; text-shadow: none; }
+}
+@keyframes flash-down {
+  0%   { color: #f87171; text-shadow: 0 0 10px rgba(248,113,113,0.7); }
+  100% { color: inherit; text-shadow: none; }
+}
+.price-flash-up   { animation: flash-up   0.9s ease-out forwards; }
+.price-flash-down { animation: flash-down 0.9s ease-out forwards; }
+
+/* 숫자 슬라이드 */
+@keyframes slide-up {
+  from { transform: translateY(6px); opacity:0; }
+  to   { transform: translateY(0);   opacity:1; }
+}
+@keyframes slide-down {
+  from { transform: translateY(-6px); opacity:0; }
+  to   { transform: translateY(0);    opacity:1; }
+}
+.slide-up   { animation: slide-up   0.22s ease-out; display:inline-block; }
+.slide-down { animation: slide-down 0.22s ease-out; display:inline-block; }
+
+/* 행 배경 하이라이트 */
+@keyframes row-up {
+  0%   { background: rgba(74,222,128,0.12); }
+  100% { background: transparent; }
+}
+@keyframes row-down {
+  0%   { background: rgba(248,113,113,0.12); }
+  100% { background: transparent; }
+}
+.row-flash-up   { animation: row-up   1s ease-out forwards; }
+.row-flash-down { animation: row-down 1s ease-out forwards; }
+
+/* 실시간 배지 */
+.live-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 700; color: #4ade80;
+  background: rgba(74,222,128,0.12); border-radius: 10px;
+  padding: 2px 7px; margin-left: 6px; vertical-align: middle;
+  transition: all 0.3s;
+}
+.live-badge.offline { color: var(--text-muted); background: rgba(255,255,255,0.06); }
+.live-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: #4ade80;
+  animation: blink 1.4s ease-in-out infinite;
+}
+.live-badge.offline .live-dot { background: var(--text-muted); animation: none; }
+@keyframes blink {
+  0%,100% { opacity:1; transform:scale(1); }
+  50%      { opacity:0.25; transform:scale(0.7); }
+}
+</style>
 </head>
 <body>
 
@@ -13,7 +69,10 @@
     <div class="header-title">📈 AI 트레이더</div>
     <div class="header-sub" id="today-date"></div>
   </div>
-  <div class="market-status" id="market-status"></div>
+  <div style="display:flex;align-items:center;gap:6px">
+    <span class="live-badge offline" id="live-badge"><span class="live-dot"></span>LIVE</span>
+    <div class="market-status" id="market-status"></div>
+  </div>
 </div>
 
 <div id="day-warning"></div>
@@ -62,7 +121,7 @@
   <a href="/" class="active"><span class="icon">🏠</span>홈</a>
   <a href="/portfolio.html"><span class="icon">💼</span>자산입력</a>
   <a href="/chat.html"><span class="icon">🤖</span>AI질문</a>
-  <a href="/history.html"><span class="icon">📊</span>이력</a>
+  <a href="/history.html"><span class="icon">📒</span>매매일지</a>
 </nav>
 
 <script>
@@ -70,7 +129,7 @@ const today = new Date();
 document.getElementById('today-date').textContent =
   today.toLocaleDateString('ko-KR', {year:'numeric',month:'long',day:'numeric',weekday:'long'});
 
-function getMarketStatus() {
+function getMarketStatusLocal() {
   const h = today.getHours(), m = today.getMinutes();
   const total = h * 60 + m, day = today.getDay();
   if (day === 0 || day === 6) return {status:'closed', label:'주말 휴장'};
@@ -80,7 +139,7 @@ function getMarketStatus() {
 }
 
 function renderMarketStatus() {
-  const ms = getMarketStatus();
+  const ms = getMarketStatusLocal();
   const el = document.getElementById('market-status');
   const cls = ms.status === 'open' ? 'market-open' : ms.status === 'pre' ? 'market-pre' : 'market-closed';
   el.className = 'market-status ' + cls;
@@ -100,8 +159,101 @@ function renderDayWarning() {
 renderDayWarning();
 
 function fmt(n) { return n == null ? '-' : Math.round(n).toLocaleString(); }
-function fmtRate(r) { return r == null ? '-' : (r >= 0 ? '+' : '') + r.toFixed(1) + '%'; }
 
+// ── 가격 추적용 맵 (stockCode → 이전 가격) ──
+const prevPrices = {};    // code → price
+const codeToName = {};    // code → stock_name (초기 로드 시 채움)
+let prevTotalAssets = null;
+let prevPnl = null;
+
+// ── 애니메이션 헬퍼 ──
+function animateNumber(el, newText, dir) {
+  // dir: 'up' | 'down' | null
+  if (!el) return;
+  el.classList.remove('slide-up', 'slide-down', 'price-flash-up', 'price-flash-down');
+  void el.offsetWidth; // reflow
+  el.textContent = newText;
+  if (dir === 'up') {
+    el.classList.add('slide-up', 'price-flash-up');
+  } else if (dir === 'down') {
+    el.classList.add('slide-down', 'price-flash-down');
+  }
+}
+
+function flashRow(el, dir) {
+  if (!el) return;
+  el.classList.remove('row-flash-up', 'row-flash-down');
+  void el.offsetWidth;
+  if (dir === 'up')   el.classList.add('row-flash-up');
+  if (dir === 'down') el.classList.add('row-flash-down');
+}
+
+// ── SSE 연결 ──
+let sseConnected = false;
+
+function connectSSE() {
+  const ms = getMarketStatusLocal();
+  if (ms.status !== 'open') return; // 장 중에만 SSE 연결
+
+  const es = new EventSource('/api/stream');
+
+  es.onopen = () => {
+    sseConnected = true;
+    const badge = document.getElementById('live-badge');
+    if (badge) badge.classList.remove('offline');
+    console.log('[SSE] 실시간 연결됨');
+  };
+
+  es.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (!d.code || !d.price) return;
+      const code = d.code;
+      const price = d.price;
+      const prev = prevPrices[code];
+      const dir = prev == null ? null : price > prev ? 'up' : price < prev ? 'down' : null;
+      prevPrices[code] = price;
+
+      // 종목명으로 DOM 찾기
+      const name = codeToName[code];
+      if (!name) return;
+
+      const priceEl = document.getElementById(`live-price-${name}`);
+      const rowEl   = document.getElementById(`stock-row-${name}`);
+
+      animateNumber(priceEl, fmt(price) + '원', dir);
+      if (dir) flashRow(rowEl, dir);
+
+      // 수익률 재계산
+      const avgPriceEl = document.getElementById(`avg-price-${name}`);
+      const avgPrice = avgPriceEl ? parseFloat(avgPriceEl.dataset.avg) : null;
+      if (avgPrice) {
+        const qty = parseFloat(avgPriceEl.dataset.qty) || 1;
+        const pr = ((price - avgPrice) / avgPrice) * 100;
+        const rateEl = document.getElementById(`live-rate-${name}`);
+        if (rateEl) {
+          const newRate = `${pr >= 0 ? '+' : ''}${pr.toFixed(1)}%`;
+          animateNumber(rateEl, newRate, dir);
+          rateEl.className = `rate ${pr >= 0 ? 'positive' : 'negative'}`;
+        }
+        // 평가금액 업데이트
+        const valEl = document.getElementById(`stock-val-${name}`);
+        if (valEl) valEl.textContent = fmt(price * qty) + '원';
+      }
+    } catch (e) {}
+  };
+
+  es.onerror = () => {
+    sseConnected = false;
+    const badge = document.getElementById('live-badge');
+    if (badge) badge.classList.add('offline');
+    es.close();
+    // 5초 후 재연결
+    setTimeout(connectSSE, 5000);
+  };
+}
+
+// ── 초기 로드 ──
 async function loadDashboard() {
   try {
     const res = await fetch('/api/portfolio');
@@ -109,18 +261,18 @@ async function loadDashboard() {
     if (!json.ok) throw new Error(json.error);
     const p = json.data;
 
-    // 총 자산
-    const rateSign = (p.overallProfitRate || 0) >= 0 ? '+' : '';
-    const rateCls = (p.overallProfitRate || 0) >= 0 ? 'positive' : 'negative';
     const pnl = p.unrealizedPnL || 0;
     const pnlSign = pnl >= 0 ? '+' : '';
     const pnlCls = pnl >= 0 ? 'positive' : 'negative';
+    const rateSign = (p.overallProfitRate || 0) >= 0 ? '+' : '';
+    prevTotalAssets = p.totalAssets;
+    prevPnl = pnl;
 
     document.getElementById('summary-grid').innerHTML = `
       <div style="margin-bottom:16px">
         <div class="summary-label" style="display:flex;justify-content:space-between;align-items:center">
           총 운용 자산
-          <span id="last-updated" style="font-size:10px;color:var(--text-light);font-weight:400"></span>
+          <span id="last-updated" style="font-size:10px;color:var(--text-muted);font-weight:400"></span>
         </div>
         <div class="pnl-big" id="live-total" style="margin-top:4px">${fmt(p.totalAssets)}원</div>
         <div id="live-pnl" class="${pnlCls}" style="font-size:13px;margin-top:4px">${pnlSign}${fmt(pnl)}원 (${rateSign}${(p.overallProfitRate||0).toFixed(1)}%)</div>
@@ -137,7 +289,6 @@ async function loadDashboard() {
       </div>
     `;
 
-    // 보유 종목
     const holdingsEl = document.getElementById('holdings-list');
     if (!p.holdings || p.holdings.length === 0) {
       holdingsEl.innerHTML = `<div class="empty-state">
@@ -146,6 +297,14 @@ async function loadDashboard() {
         <div class="desc"><a href="/portfolio.html">자산 입력하기</a></div>
       </div>`;
     } else {
+      // codeToName 맵 채우기
+      p.holdings.forEach(h => {
+        if (h.stock_code) {
+          codeToName[h.stock_code] = h.stock_name;
+          prevPrices[h.stock_code] = h.current_price || h.avg_price;
+        }
+      });
+
       holdingsEl.innerHTML = p.holdings.map(h => {
         const pr = h.profitRate || 0;
         const pSign = pr >= 0 ? '+' : '';
@@ -156,22 +315,29 @@ async function loadDashboard() {
         const rsiPct = h.rsi ? Math.min(100, h.rsi) : 50;
         const macd = h.macd || null;
         const macdCls = macd === '데드크로스' ? 'danger' : macd === '골든크로스' ? 'safe' : '';
-
         let actionCls = 'hold', actionText = h.lastAction || '';
         if (actionText.includes('매도')) actionCls = 'sell';
         else if (actionText.includes('매수')) actionCls = 'buy';
+        const currentPrice = h.current_price || h.avg_price;
+        const changeDir = h.changeRate > 0 ? '▲' : h.changeRate < 0 ? '▼' : '';
+        const changeCls = h.changeRate > 0 ? 'positive' : h.changeRate < 0 ? 'negative' : '';
 
-        return `<div class="stock-row">
+        return `<div class="stock-row" id="stock-row-${h.stock_name}">
           <div class="stock-row-flex">
             <div>
               <div class="stock-name">${h.stock_name}</div>
-              <div class="stock-meta">${h.quantity}주 &nbsp;·&nbsp; 평단 ${fmt(h.avg_price)}원</div>
+              <div class="stock-meta">
+                ${h.quantity}주 &nbsp;·&nbsp; 평단 ${fmt(h.avg_price)}원
+                <span id="stock-val-${h.stock_name}" style="color:var(--text-muted);margin-left:4px">(${fmt(currentPrice * h.quantity)}원)</span>
+              </div>
             </div>
             <div class="stock-price">
-              <div class="price" id="live-price-${h.stock_name}">${fmt(h.current_price || h.avg_price)}원</div>
+              <div class="price" id="live-price-${h.stock_name}">${fmt(currentPrice)}원</div>
               <div class="rate ${pCls}" id="live-rate-${h.stock_name}">${pSign}${pr.toFixed(1)}%</div>
+              ${h.changeRate != null ? `<div style="font-size:10px;color:var(--text-muted);text-align:right;margin-top:1px"><span class="${changeCls}">${changeDir}${Math.abs(h.changeRate).toFixed(1)}%</span> 전일比</div>` : ''}
             </div>
           </div>
+          <span id="avg-price-${h.stock_name}" data-avg="${h.avg_price}" data-qty="${h.quantity}" style="display:none"></span>
           <div class="tech-row">
             ${rsi != null ? `<span class="tech-chip ${rsiCls}">RSI ${rsi}</span>` : ''}
             ${macd ? `<span class="tech-chip ${macdCls}">MACD ${macd}</span>` : ''}
@@ -181,6 +347,9 @@ async function loadDashboard() {
           ${actionText ? `<div class="ai-action ${actionCls}"><span class="action-label action-${actionCls}">→ ${actionText}</span>${h.lastReason ? `<span style="color:var(--text-muted);font-size:11px">&nbsp;${h.lastReason}</span>` : ''}</div>` : ''}
         </div>`;
       }).join('');
+
+      // SSE 연결 시작 (장 중일 때만)
+      connectSSE();
     }
 
     // AI 요약
@@ -208,12 +377,21 @@ async function loadDashboard() {
         <div class="desc">아직 AI 분석이 없습니다</div>
       </div>`;
     }
+
+    // 장 외 시간 라벨
+    const updEl = document.getElementById('last-updated');
+    if (updEl) {
+      const ms = getMarketStatusLocal();
+      if (ms.status !== 'open') updEl.textContent = '장 마감';
+    }
+
   } catch (e) {
     document.getElementById('holdings-list').innerHTML =
       `<div class="empty-state"><div class="desc">데이터 로드 실패: ${e.message}</div></div>`;
   }
 }
 
+// ── 통계 (변경 없음) ──
 async function loadStats() {
   try {
     const [r1, r2, r3] = await Promise.all([
@@ -225,74 +403,63 @@ async function loadStats() {
     if (j1.ok) document.getElementById('sonnet-count').textContent = `${j1.data.used}/15`;
     if (j2.ok) document.getElementById('alert-count').textContent = j2.data.length;
     if (j3.ok) {
-      const today = new Date().toISOString().slice(0,10);
-      const cnt = j3.data.filter(a => a.cash_recommendation === '현금보유' && a.date === today).length;
+      const todayStr = new Date().toISOString().slice(0,10);
+      const cnt = j3.data.filter(a => a.cash_recommendation === '현금보유' && a.date === todayStr).length;
       document.getElementById('cash-hold-count').textContent = cnt;
     }
   } catch(e) {}
 }
 
-// ── 실시간 폴링 ──────────────────────────────────────
-// 장 중(09:00~15:30)에만 60초마다 현재가/수익률 자동 갱신
-const POLL_INTERVAL_MS = 60 * 1000;
-let pollTimer = null;
-let lastUpdated = null;
-
+// ── 장 외 시간 폴백 폴링 (60초, SSE 미연결 시) ──
 function isTradingHours() {
   const now = new Date();
-  const day = now.getDay();
-  if (day === 0 || day === 6) return false;
-  const total = now.getHours() * 60 + now.getMinutes();
-  return total >= 540 && total < 930; // 09:00 ~ 15:30
+  if (now.getDay() === 0 || now.getDay() === 6) return false;
+  const t = now.getHours() * 60 + now.getMinutes();
+  return t >= 540 && t < 930;
 }
 
-function updateLastUpdatedLabel() {
-  const el = document.getElementById('last-updated');
-  if (!el) return;
-  if (!lastUpdated) { el.textContent = ''; return; }
-  const diff = Math.floor((Date.now() - lastUpdated) / 1000);
-  el.textContent = `${diff}초 전 업데이트`;
-}
-
-async function pollPrices() {
-  if (!isTradingHours()) {
-    // 장 외 시간 → 폴링 중단, 라벨 표시
-    const el = document.getElementById('last-updated');
-    if (el) el.textContent = '장 마감 — 자동 갱신 중지';
-    return;
-  }
-
+setInterval(async () => {
+  if (sseConnected) return; // SSE 연결 중이면 폴링 불필요
+  if (!isTradingHours()) return;
   try {
     const res = await fetch('/api/portfolio');
     const json = await res.json();
     if (!json.ok || !json.data) return;
     const p = json.data;
-    lastUpdated = Date.now();
-
-    // 총 자산 수치만 조용히 업데이트 (DOM 전체 재렌더 없이)
-    const pnl = p.unrealizedPnL || 0;
-    const pnlSign = pnl >= 0 ? '+' : '';
-    const pnlCls = pnl >= 0 ? 'positive' : 'negative';
-    const rateSign = (p.overallProfitRate || 0) >= 0 ? '+' : '';
 
     const totalEl = document.getElementById('live-total');
+    const dir = prevTotalAssets == null ? null : p.totalAssets > prevTotalAssets ? 'up' : p.totalAssets < prevTotalAssets ? 'down' : null;
+    animateNumber(totalEl, fmt(p.totalAssets) + '원', dir);
+    prevTotalAssets = p.totalAssets;
+
+    const pnl = p.unrealizedPnL || 0;
     const pnlEl = document.getElementById('live-pnl');
-    const stockValEl = document.getElementById('live-stock-val');
-    if (totalEl) totalEl.textContent = fmt(p.totalAssets) + '원';
+    const pnlDir = prevPnl == null ? null : pnl > prevPnl ? 'up' : pnl < prevPnl ? 'down' : null;
+    const pnlSign = pnl >= 0 ? '+' : '';
+    const rateSign = (p.overallProfitRate || 0) >= 0 ? '+' : '';
     if (pnlEl) {
       pnlEl.textContent = `${pnlSign}${fmt(pnl)}원 (${rateSign}${(p.overallProfitRate||0).toFixed(1)}%)`;
-      pnlEl.className = pnlCls;
-      pnlEl.style.fontSize = '13px';
-      pnlEl.style.marginTop = '4px';
+      pnlEl.className = pnl >= 0 ? 'positive' : 'negative';
+      pnlEl.style.cssText = 'font-size:13px;margin-top:4px';
     }
+    prevPnl = pnl;
+
+    const stockValEl = document.getElementById('live-stock-val');
     if (stockValEl) stockValEl.textContent = fmt(p.stockValue) + '원';
 
-    // 종목별 현재가/수익률 업데이트
     if (p.holdings) {
       p.holdings.forEach(h => {
+        const code = h.stock_code;
+        const price = h.current_price || h.avg_price;
+        const prev = prevPrices[code];
+        const dir2 = prev == null ? null : price > prev ? 'up' : price < prev ? 'down' : null;
+        prevPrices[code] = price;
+
         const priceEl = document.getElementById(`live-price-${h.stock_name}`);
-        const rateEl = document.getElementById(`live-rate-${h.stock_name}`);
-        if (priceEl) priceEl.textContent = fmt(h.current_price || h.avg_price) + '원';
+        const rateEl  = document.getElementById(`live-rate-${h.stock_name}`);
+        const rowEl   = document.getElementById(`stock-row-${h.stock_name}`);
+        animateNumber(priceEl, fmt(price) + '원', dir2);
+        if (dir2) flashRow(rowEl, dir2);
         if (rateEl) {
           const pr = h.profitRate || 0;
           rateEl.textContent = `${pr >= 0 ? '+' : ''}${pr.toFixed(1)}%`;
@@ -300,27 +467,11 @@ async function pollPrices() {
         }
       });
     }
-
-    updateLastUpdatedLabel();
-  } catch (e) {
-    // 폴링 실패 시 조용히 무시 (UI 깨지지 않음)
-  }
-}
-
-function startPolling() {
-  if (pollTimer) clearInterval(pollTimer);
-  // 1분마다 폴링 (장 중에만 실행)
-  pollTimer = setInterval(() => {
-    pollPrices();
-    updateLastUpdatedLabel();
-  }, POLL_INTERVAL_MS);
-  // 라벨 카운터 1초마다 갱신
-  setInterval(updateLastUpdatedLabel, 1000);
-}
+  } catch(e) {}
+}, 60000);
 
 loadDashboard();
 loadStats();
-startPolling();
 </script>
 </body>
 </html>

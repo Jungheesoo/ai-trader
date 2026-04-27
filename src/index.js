@@ -9,6 +9,7 @@ const { isWeekday } = require('./services/holiday');
 const portfolioRoute = require('./routes/portfolio');
 const chatRoute = require('./routes/chat');
 const historyRoute = require('./routes/history');
+const { router: streamRoute } = require('./routes/stream');
 
 const { runMorningLink } = require('./scheduler/morning');
 const { runScan } = require('./scheduler/scan');
@@ -34,6 +35,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/portfolio', portfolioRoute);
 app.use('/api/chat', chatRoute);
 app.use('/api/history', historyRoute);
+app.use('/api/stream', streamRoute);
 
 // SPA fallback: html 파일 직접 서빙
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));

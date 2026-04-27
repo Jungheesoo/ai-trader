@@ -112,8 +112,16 @@ function handleMessage(data) {
       if (tick && stockCode) {
         if (!tickData[stockCode]) tickData[stockCode] = [];
         tickData[stockCode].push(tick);
-        // 최대 300개(5분×60초) 유지
         if (tickData[stockCode].length > 300) tickData[stockCode].shift();
+
+        // SSE broadcast
+        try {
+          const { broadcast } = require('../routes/stream');
+          const parts2 = str.split('|');
+          const fields2 = parts2[3].split('^');
+          const changeRate = parseFloat(fields2[9]) || 0; // 전일대비율
+          broadcast(stockCode, tick.price, changeRate);
+        } catch (e) { /* silent */ }
       }
     } else if (trId === 'H0STASP0') {
       if (stockCode) parseHokaData(str, stockCode);
