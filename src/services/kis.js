@@ -482,9 +482,9 @@ async function getVolumeRankStocks(count = 30) {
     const token = await getToken();
     if (!token) throw new Error('토큰 없음');
     await delay(200);
-    const res = await axios.get(`${BASE_URL}/uapi/domestic-stock/v1/ranking/volume`, {
+    const res = await axios.get(`${BASE_URL}/uapi/domestic-stock/v1/quotations/volume-rank`, {
       params: {
-        FID_COND_MKT_DIV_CODE: 'J',   // J=코스피+코스닥
+        FID_COND_MRKT_DIV_CODE: 'J',   // J=코스피+코스닥
         FID_COND_SCR_DIV_CODE: '20171',
         FID_INPUT_ISCD: '0000',
         FID_DIV_CLS_CODE: '0',
@@ -526,7 +526,8 @@ async function getChangeRankStocks(count = 30) {
     await delay(200);
     const res = await axios.get(`${BASE_URL}/uapi/domestic-stock/v1/ranking/fluctuation`, {
       params: {
-        FID_COND_MKT_DIV_CODE: 'J',
+        FID_COND_MRKT_DIV_CODE: 'J',
+        FID_RANK_SORT_CLS_CODE: '0',
         FID_COND_SCR_DIV_CODE: '20170',
         FID_INPUT_ISCD: '0000',
         FID_DIV_CLS_CODE: '0',
