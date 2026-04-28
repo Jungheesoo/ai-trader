@@ -174,11 +174,25 @@ router.post('/trades', (req, res) => {
         const lastDate = db.prepare('SELECT MAX(date) as d FROM holdings WHERE stock_name = ?').get(resolvedName);
         if (lastDate?.d && lastDate.d !== today) db.prepare('DELETE FROM holdings WHERE stock_name = ? AND date = ?').run(resolvedName, lastDate.d);
       }
+
+      // 매도 대금 현금에 자동 합산
+      const saleAmount = Math.round(priceN * qty);
+      const existing = db.prepare('SELECT * FROM portfolio_input WHERE date = ?').get(today);
+      if (existing) {
+        db.prepare('UPDATE portfolio_input SET cash = cash + ?, updated_at = ? WHERE date = ?')
+          .run(saleAmount, new Date().toISOString(), today);
+      } else {
+        // 오늘 입력 없으면 전일 데이터 복사 후 현금 합산
+        const prev = db.prepare('SELECT * FROM portfolio_input ORDER BY date DESC LIMIT 1').get();
+        const baseCash = prev?.cash || 0;
+        const baseNew = prev?.new_investment || 0;
+        db.prepare('INSERT INTO portfolio_input (date, cash, new_investment, updated_at) VALUES (?, ?, ?, ?)')
+          .run(today, baseCash + saleAmount, baseNew, new Date().toISOString());
+      }
     } else if (trade_type === 'buy') {
       // 신규 매수: holdings 추가
       const existing = db.prepare('SELECT * FROM holdings WHERE stock_code = ? AND date = ?').get(resolvedCode, today);
       if (existing) {
-        // 기존 종목이면 평단가 재계산
         const newQty = existing.quantity + qty;
         const newAvg = Math.round((existing.avg_price * existing.quantity + priceN * qty) / newQty);
         db.prepare('UPDATE holdings SET quantity = ?, avg_price = ? WHERE stock_code = ? AND date = ?')
@@ -186,6 +200,14 @@ router.post('/trades', (req, res) => {
       } else {
         db.prepare('INSERT INTO holdings (date, stock_name, stock_code, quantity, avg_price) VALUES (?, ?, ?, ?, ?)')
           .run(today, resolvedName, resolvedCode, qty, priceN);
+      }
+
+      // 매수 대금 현금에서 차감
+      const buyAmount = Math.round(priceN * qty);
+      const existingInput = db.prepare('SELECT * FROM portfolio_input WHERE date = ?').get(today);
+      if (existingInput) {
+        db.prepare('UPDATE portfolio_input SET cash = MAX(0, cash - ?), updated_at = ? WHERE date = ?')
+          .run(buyAmount, new Date().toISOString(), today);
       }
     }
 

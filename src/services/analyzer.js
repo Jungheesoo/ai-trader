@@ -183,6 +183,7 @@ ${isMonday ? '⚠️ 오늘은 월요일입니다. 주말 효과 가능성 고�
 현금: ${assets.cash.toLocaleString()}원
 신규투입금: ${assets.newInvestment.toLocaleString()}원
 총 운용 가능: ${assets.total.toLocaleString()}원
+투자 가능 현금: ${(assets.cash + assets.newInvestment).toLocaleString()}원
 
 === 보유 종목 상세 ===
 ${holdingsText}
@@ -227,7 +228,12 @@ ${isFriday && !isFridayAfternoon() ? '오늘 금요일: 오후 2시 이후 신�
 ${isMonday ? '오늘 월요일: 주말 효과 하락 가능. 급락 시 악재 없으면 매수 기회로 판단.' : ''}
 
 재투자 허용 조건 (모두 충족 시에만): 시장 방향성 긍정, 명확한 대체 종목 존재, 장 마감 1시간 이상 남음, 글로벌 악재 없음
-현금 보유 조건 (하나라도 해당 시): 시장 하락 중, 마땅한 대체 종목 없음, 장 마감 1시간 이내, 주말 효과 우려`;
+현금 보유 조건 (하나라도 해당 시): 시장 하락 중, 마땅한 대체 종목 없음, 장 마감 1시간 이내, 주말 효과 우려
+
+[매수/갈아타기 권고 시 필수 포함]
+투자 가능 현금: ${(assets.cash + assets.newInvestment).toLocaleString()}원
+→ 매수 추천 종목의 현재가 기준으로 몇 주 매수 가능한지 반드시 명시할 것
+→ 예: "현재가 50,000원 기준 투자가능현금 ${(assets.cash + assets.newInvestment).toLocaleString()}원으로 최대 XX주 매수 가능"`;
 }
 
 async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, context = '', dartDisclosures = []) {
