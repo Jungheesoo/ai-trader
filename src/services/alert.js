@@ -60,17 +60,15 @@ async function sendUrgentAlert(holding, analysis, relevantNews = []) {
   if (newsLine) msg += `📰 이슈: ${newsLine.slice(0, 60)}\n`;
   msg += `\n${actionLine}\n\n`;
 
-  if (analysis.why_sell_now) msg += `💰 익절 이유: ${analysis.why_sell_now.slice(0, 200)}\n\n`;
-  if (analysis.why_hold) msg += `🤚 보유 이유: ${analysis.why_hold.slice(0, 200)}\n\n`;
-  if (analysis.news_impact) msg += `📰 뉴스: ${analysis.news_impact.slice(0, 150)}\n\n`;
+  if (analysis.why_sell_now) msg += `💰 익절 이유: ${analysis.why_sell_now}\n\n`;
+  if (analysis.why_hold) msg += `🤚 보유 이유: ${analysis.why_hold}\n\n`;
+  if (analysis.news_impact) msg += `📰 뉴스: ${analysis.news_impact}\n\n`;
   if (analysis.target_price) msg += `🎯 목표가 ${fmt(analysis.target_price)}원\n`;
   if (analysis.stop_loss) msg += `🛡 손절가 ${fmt(analysis.stop_loss)}원\n`;
   if (analysis.target_price || analysis.stop_loss) msg += '\n';
 
-  msg += `근거: ${(analysis.reason || '-').slice(0, 150)}\n\n`;
+  msg += `근거: ${analysis.reason || '-'}\n\n`;
   msg += `👉 ${SERVER_URL}`;
-
-  if (msg.length > 4000) msg = msg.slice(0, 3990) + '…\n\n👉 ' + SERVER_URL;
 
   return sendMessage(msg, holding.stock_name, `urgent_${action}`);
 }
