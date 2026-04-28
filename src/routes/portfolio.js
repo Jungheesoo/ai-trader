@@ -49,8 +49,8 @@ router.post('/', async (req, res) => {
     const { holdings, cash, newInvestment } = req.body;
     const today = getTodayKST();
 
-    if (!Array.isArray(holdings) || holdings.length === 0) {
-      return res.status(400).json({ ok: false, error: '보유 종목을 입력해주세요.' });
+    if (!Array.isArray(holdings)) {
+      return res.status(400).json({ ok: false, error: '잘못된 요청입니다.' });
     }
 
     // 종목 약어 변환 및 검증
@@ -64,11 +64,9 @@ router.post('/', async (req, res) => {
       };
     }).filter(h => h.quantity > 0 && h.avg_price > 0);
 
-    if (resolved.length === 0) {
-      return res.status(400).json({ ok: false, error: '유효한 종목 정보를 입력해주세요.' });
+    if (resolved.length > 0) {
+      saveHoldings(today, resolved);
     }
-
-    saveHoldings(today, resolved);
     savePortfolioInput(today, parseFloat(cash) || 0, parseFloat(newInvestment) || 0);
 
     res.json({ ok: true, message: '저장 완료. 분석 파이프라인 시작합니다.' });
