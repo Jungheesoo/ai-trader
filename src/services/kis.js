@@ -229,8 +229,8 @@ async function getDailyChart(stockCode, days = 60) {
   });
 }
 
-async function getInvestorData(stockCode) {
-  return requestWithRetry(async () => {
+async function getInvestorData(stockCode, { noRetry = false } = {}) {
+  const runner = async () => {
     const token = await getToken();
     if (!token) throw new Error('토큰 없음');
     await delay(100);
@@ -297,7 +297,11 @@ async function getInvestorData(stockCode) {
       foreignConsecutiveDays,
       institutionConsecutiveDays
     };
-  });
+  };
+  if (noRetry) {
+    try { return await runner(); } catch (e) { return null; }
+  }
+  return requestWithRetry(runner);
 }
 
 function getDateBefore(days) {

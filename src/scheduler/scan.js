@@ -99,7 +99,7 @@ async function runScan() {
         await delay(150); // KIS API 초당 20회 제한 준수
         const [chartData, investorData] = await Promise.allSettled([
           getDailyChart(stock.code, 60),
-          getInvestorData(stock.code)
+          getInvestorData(stock.code, { noRetry: true })
         ]);
 
         const chart = chartData.status === 'fulfilled' ? chartData.value : null;
