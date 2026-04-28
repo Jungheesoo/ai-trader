@@ -112,19 +112,42 @@ function buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, co
       ? `52주고가 ${h.week52High.toLocaleString()}원${h.isNear52High ? ' ⚠️신고가근접' : ''} / 52주저가 ${h.week52Low?.toLocaleString() ?? '-'}원${h.isNear52Low ? ' ⚠️신저가근접' : ''}`
       : '데이터없음';
 
+    // 볼린저밴드 내 현재가 위치 (상단/중단/하단 어디에 가까운지)
+    let bbPosition = '데이터없음';
+    if (h.bollingerBands && h.current_price) {
+      const { upper, middle, lower } = h.bollingerBands;
+      const range = upper - lower;
+      if (range > 0) {
+        const pct = Math.round(((h.current_price - lower) / range) * 100);
+        if (pct >= 80) bbPosition = `상단근접(${pct}%)⚠️과매수`;
+        else if (pct >= 50) bbPosition = `중단~상단(${pct}%)`;
+        else if (pct >= 20) bbPosition = `중단~하단(${pct}%)`;
+        else bbPosition = `하단근접(${pct}%)↑반등구간`;
+      }
+    }
+
+    // 수익 단계 판단
+    const profitStage = h.profit_loss_rate >= 7 ? '익절검토(+7%초과)' :
+                        h.profit_loss_rate >= 3 ? '수익중(+3~7%)' :
+                        h.profit_loss_rate >= 0 ? '소폭수익(0~3%)' :
+                        h.profit_loss_rate >= -3 ? '소폭손실(-3%이내)' : '손절검토(-3%초과)⚠️';
+
     return `
 종목: ${h.stock_name} (${h.stock_code || '-'})
-보유수량: ${h.quantity}주 / 평단가: ${h.avg_price.toLocaleString()}원
-현재가: ${h.current_price.toLocaleString()}원 / 수익률: ${h.profit_loss_rate}% (${h.profit_loss >= 0 ? '+' : ''}${h.profit_loss.toLocaleString()}원)
-RSI: ${h.rsi ?? '데이터없음'} / MACD: ${h.macd ?? '데이터없음'} / 거래량배수: ${h.volumeRatio ?? '데이터없음'}
-볼린저밴드: ${bbText}
+보유: ${h.quantity}주 / 평단가: ${h.avg_price.toLocaleString()}원 / 총매수금: ${Math.round(h.avg_price * h.quantity).toLocaleString()}원
+현재가: ${h.current_price.toLocaleString()}원 / 수익률: ${h.profit_loss_rate}% → ${profitStage}
+평가손익: ${h.profit_loss >= 0 ? '+' : ''}${h.profit_loss.toLocaleString()}원
+목표가: ${h.target_price ? h.target_price.toLocaleString() + '원' : '미설정'} / 손절가: ${h.stop_loss ? h.stop_loss.toLocaleString() + '원' : '미설정'}
+─ 기술지표 ─
+RSI: ${h.rsi ?? '데이터없음'}${h.rsi >= 70 ? ' ⚠️과매수' : h.rsi <= 30 ? ' ↑과매도반등' : ''}
+MACD: ${h.macd ?? '데이터없음'} / MACD선: ${h.macdLine ?? '-'}
+거래량배수: ${h.volumeRatio ?? '데이터없음'}${h.volumeRatio >= 2 ? 'x ⚠️급증' : h.volumeRatio < 0.5 ? 'x ↓관심감소' : 'x'}
+볼린저밴드: ${bbText} → 현재가위치: ${bbPosition}
 52주: ${week52Str}
-외국인순매수: ${h.foreignNet !== null ? h.foreignNet.toLocaleString() + '주' + foreignNetAmountStr : '데이터없음'} ${investorDateNote}
-외인5일합산: ${h.foreignNet5Days !== null ? h.foreignNet5Days.toLocaleString() + '주' : '데이터없음'}
-외인연속순매수: ${h.foreignConsecutiveDays !== null ? h.foreignConsecutiveDays + '일' : '데이터없음'}
-기관순매수: ${h.institutionNet !== null ? h.institutionNet.toLocaleString() + '주' : '데이터없음'} ${investorDateNote}
-기관연속순매수: ${h.institutionConsecutiveDays !== null ? h.institutionConsecutiveDays + '일' : '데이터없음'}
-트레일링스탑(DB고가기준): ${h.trailingStop?.toLocaleString() ?? '데이터없음'}원`;
+트레일링스탑: ${h.trailingStop?.toLocaleString() ?? '데이터없음'}원${h.trailingStop && h.current_price <= h.trailingStop ? ' ⚠️도달!' : ''}
+─ 수급 ${investorDateNote} ─
+외국인: ${h.foreignNet !== null ? (h.foreignNet >= 0 ? '+' : '') + h.foreignNet.toLocaleString() + '주' + foreignNetAmountStr : '데이터없음'} / 5일합산: ${h.foreignNet5Days !== null ? (h.foreignNet5Days >= 0 ? '+' : '') + h.foreignNet5Days.toLocaleString() + '주' : '-'} / 연속: ${h.foreignConsecutiveDays !== null ? h.foreignConsecutiveDays + '일' : '-'}
+기관: ${h.institutionNet !== null ? (h.institutionNet >= 0 ? '+' : '') + h.institutionNet.toLocaleString() + '주' : '데이터없음'} / 연속: ${h.institutionConsecutiveDays !== null ? h.institutionConsecutiveDays + '일' : '-'}`;
   }).join('\n---');
 
   const usMarketText = usMarket.length > 0
@@ -149,11 +172,15 @@ RSI: ${h.rsi ?? '데이터없음'} / MACD: ${h.macd ?? '데이터없음'} / 거�
       ).join('\n')
     : '신규 공시 없음';
 
-  // watchlist 상위 5종목 (갈아타기 후보 비교용)
+  // watchlist 상위 5종목 (갈아타기/신규 후보 비교용)
+  const availCashForWl = (assets.cash || 0) + (assets.newInvestment || 0);
   const watchlistText = (watchlist || []).slice(0, 5).map(w => {
     const foreignDir = w.foreign_net > 0 ? '외인매수' : w.foreign_net < 0 ? '외인매도' : '외인중립';
-    const priceStr = w.current_price ? ` 현재가 ${w.current_price.toLocaleString()}원` : '';
-    return `${w.stock_name}(${w.stock_code || '-'})${priceStr}: RSI ${w.rsi ?? '-'}, MACD ${w.macd ?? '-'}, 거래량배수 ${w.volume_ratio ?? '-'}, ${foreignDir}`;
+    const institutionDir = w.institution_net > 0 ? '기관매수' : w.institution_net < 0 ? '기관매도' : '기관중립';
+    const buyableQty = w.current_price && availCashForWl > 0 ? Math.floor(availCashForWl / w.current_price) : null;
+    const priceStr = w.current_price ? `현재가 ${w.current_price.toLocaleString()}원` : '가격없음';
+    const buyStr = buyableQty !== null ? ` → 최대 ${buyableQty}주 매수가능` : '';
+    return `${w.stock_name}(${w.stock_code || '-'}) ${priceStr}${buyStr}\n  RSI:${w.rsi ?? '-'} MACD:${w.macd ?? '-'} 거래량:${w.volume_ratio ?? '-'}x ${foreignDir} ${institutionDir} | ${w.reason || ''}`;
   }).join('\n');
 
   // Haiku가 뉴스에서 포착한 신규 진입 후보 종목
@@ -224,16 +251,17 @@ ${isMonday ? '오늘 월요일: 주말 효과 하락 가능. 급락 시 악재 �
 
 투자 가능 현금: ${(assets.cash + assets.newInvestment).toLocaleString()}원
 
-[전략 판단 — 아래 모든 시나리오를 비교해 최선 하나를 선택]
-1. 보유 종목 계속 보유
-2. 보유 종목 전량 매도 후 watchlist 갈아타기
-3. 현금으로 watchlist 신규 매수
-4. 현금으로 보유 종목 추가 매수
-5. 전량 현금 보유 대기
-→ 매수 추천 시 현재가 기준 투자가능현금 ${(assets.cash + assets.newInvestment).toLocaleString()}원으로 최대 몇 주 살 수 있는지 반드시 명시
+[지금 당장 해야 할 행동 — 아래 5가지 시나리오 중 하나를 선택]
+시나리오1 보유유지: 현재 종목이 목표가까지 추가 상승 가능하고 리스크 없음
+시나리오2 전량매도(익절): 수익률 +5% 이상 또는 목표가 도달 또는 더 좋은 종목 발견
+시나리오3 전량매도(손절): 수익률 -3% 이하 또는 트레일링스탑 도달 또는 악재 확인
+시나리오4 갈아타기: 현재 종목 매도 후 watchlist 종목으로 이동 (1.5배 이상 유리할 때)
+시나리오5 현금매수: 현금으로 watchlist 신규 매수 (6조건 모두 충족 시에만)
+시나리오6 현금보유: 위 조건 미충족. 기다리는 것도 전략.
 
-재투자 허용 조건 (모두 충족 시에만): 시장 방향성 긍정, 명확한 대체 종목 존재, 장 마감 1시간 이상 남음, 글로벌 악재 없음
-현금 보유 조건 (하나라도 해당 시): 시장 하락 중, 마땅한 대체 종목 없음, 장 마감 1시간 이내, 주말 효과 우려`;
+→ 선택한 시나리오와 이유를 수치로 명시
+→ 매수 추천 시: 투자가능현금 ${(assets.cash + assets.newInvestment).toLocaleString()}원 / 진입가 / 최대주수 / 목표가 / 손절가 반드시 포함
+→ 확신 없으면 시나리오6(현금보유) 선택. 애매한 추천은 손실로 이어짐.`;
 }
 
 async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, context = '', dartDisclosures = []) {
