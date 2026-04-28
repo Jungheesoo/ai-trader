@@ -44,11 +44,29 @@ async function runClosingReport() {
       },
       holdings: portfolio.holdings.map(h => ({
         stock_name: h.stock_name,
+        stock_code: h.stock_code,
         current_price: h.current_price,
+        avg_price: h.avg_price,
+        quantity: h.quantity,
         profit_rate: h.profitRate,
         profit_loss: h.profitLoss,
         rsi: h.rsi,
-        macd: h.macd
+        macd: h.macd,
+        volume_ratio: h.volumeRatio,
+        bollinger_bands: h.bollingerBands,
+        foreign_net: h.foreignNet,
+        foreign_net_amount: h.foreignNetAmount,
+        institution_net: h.institutionNet,
+        foreign_net_5days: h.foreignNet5Days,
+        foreign_consecutive_days: h.foreignConsecutiveDays,
+        institution_consecutive_days: h.institutionConsecutiveDays,
+        investor_data_date: h.investorDataDate,
+        investor_is_today: h.investorIsToday,
+        week52_high: h.week52High,
+        week52_low: h.week52Low,
+        is_near_52high: h.isNear52High,
+        is_near_52low: h.isNear52Low,
+        trailing_stop: h.trailingStop
       })),
       today_stats: {
         sonnet_calls: sonnetCount,
@@ -94,8 +112,23 @@ function formatClosingReport(portfolio, sonnetCount, alertCount, cashHoldCount, 
     for (const h of portfolio.holdings) {
       const pSign = (h.profitRate || 0) >= 0 ? '+' : '';
       msg += `[${h.stock_name}] ${pSign}${(h.profitRate || 0).toFixed(1)}% / ${pSign}${Math.round(h.profitLoss || 0).toLocaleString()}원\n`;
+      msg += `현재가: ${(h.current_price || 0).toLocaleString()}원 / 평단: ${(h.avg_price || 0).toLocaleString()}원\n`;
       const rsiStr = h.rsi ? `RSI ${h.rsi.toFixed(0)}${h.rsi >= 70 ? '(과매수)' : h.rsi <= 30 ? '(과매도)' : ''}` : '';
-      if (rsiStr) msg += `  ${rsiStr} / MACD: ${h.macd || '-'}\n`;
+      if (rsiStr) msg += `${rsiStr} / MACD: ${h.macd || '-'}\n`;
+      if (h.bollingerBands) {
+        msg += `BB: 상단 ${h.bollingerBands.upper.toLocaleString()} / 중단 ${h.bollingerBands.middle.toLocaleString()} / 하단 ${h.bollingerBands.lower.toLocaleString()}\n`;
+      }
+      if (h.foreignNet !== null && h.foreignNet !== undefined) {
+        const fSign = h.foreignNet >= 0 ? '+' : '';
+        const instSign = (h.institutionNet || 0) >= 0 ? '+' : '';
+        const dateNote = h.investorDataDate ? (h.investorIsToday ? '(확정)' : `(전일)`) : '';
+        msg += `외인: ${fSign}${h.foreignNet.toLocaleString()}주${dateNote}`;
+        if (h.foreignConsecutiveDays > 0) msg += ` (${h.foreignConsecutiveDays}일 연속)`;
+        msg += ` / 기관: ${instSign}${(h.institutionNet || 0).toLocaleString()}주\n`;
+        if (h.foreignNet5Days != null) msg += `외인 5일 합산: ${h.foreignNet5Days >= 0 ? '+' : ''}${h.foreignNet5Days.toLocaleString()}주\n`;
+      }
+      if (h.trailingStop) msg += `트레일링: ${h.trailingStop.toLocaleString()}원\n`;
+      msg += '\n';
     }
   }
   const totalSign = (portfolio.overallProfitRate || 0) >= 0 ? '+' : '';
