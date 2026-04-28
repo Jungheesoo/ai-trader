@@ -18,6 +18,9 @@ let kisDownSince = null;   // 최초 500 발생 시각
 let kisRecoveryAt = null;  // 30분 후 재시도 허용 시각
 let kisDownAlerted = false; // 장애 알림 1회 제한
 
+// 종목별 마지막 성공 데이터 캐시 (KIS 실패 시 fallback용)
+const lastSuccessCache = {};
+
 function loadTokenFromFile() {
   try {
     if (!fs.existsSync(TOKEN_FILE)) return;
@@ -401,7 +404,14 @@ async function getFullStockData(stockCode) {
     getInvestorData(stockCode).catch(() => null)  // 수급 실패해도 현재가/차트는 유지
   ]);
 
-  if (!priceData || !chartData || chartData.length < 20) return null;
+  // 현재가/차트 실패 시 → 캐시된 마지막 성공 데이터 반환
+  if (!priceData || !chartData || chartData.length < 20) {
+    if (lastSuccessCache[stockCode]) {
+      console.log(`[KIS] ${stockCode} 실패 → 캐시 데이터 사용 (${new Date(lastSuccessCache[stockCode]._cachedAt).toLocaleTimeString('ko-KR')})`);
+      return lastSuccessCache[stockCode];
+    }
+    return null;
+  }
   if (!investorData) console.warn(`[KIS] ${stockCode} 수급 데이터 없음 — 현재가/차트만 사용`);
 
   const closes = chartData.map(d => d.close);
@@ -415,18 +425,21 @@ async function getFullStockData(stockCode) {
   const volumeRatio = calculateVolumeRatio(volumes);
   const trailingStop = calculateTrailingStop(closes, priceData.price);
 
-  // 52주 신고가/신저가 (최대 60일치 데이터 기준)
   const week52High = Math.max(...highs);
   const week52Low = Math.min(...lows);
   const isNear52High = priceData.price >= week52High * 0.97;
   const isNear52Low = priceData.price <= week52Low * 1.03;
 
-  // 외국인 순매수 금액 환산
   const foreignNetAmount = investorData?.foreignNet != null
     ? Math.round(investorData.foreignNet * priceData.price)
     : null;
 
-  return {
+  // 수급 실패 시 캐시의 investor 데이터 재사용
+  const cachedInvestor = !investorData && lastSuccessCache[stockCode]?.investor
+    ? lastSuccessCache[stockCode].investor
+    : null;
+
+  const result = {
     ...priceData,
     rsi,
     macd,
@@ -437,12 +450,16 @@ async function getFullStockData(stockCode) {
     week52Low,
     isNear52High,
     isNear52Low,
-    investor: {
-      ...investorData,
-      foreignNetAmount
-    },
-    chartData: chartData.slice(-5)
+    investor: investorData
+      ? { ...investorData, foreignNetAmount }
+      : cachedInvestor,
+    chartData: chartData.slice(-5),
+    _cachedAt: Date.now()
   };
+
+  // 성공 데이터 캐시 저장
+  lastSuccessCache[stockCode] = result;
+  return result;
 }
 
 function isKisDown() {
