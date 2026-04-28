@@ -85,6 +85,7 @@ async function runMorningReport() {
 function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dartDisclosures = []) {
   const now = new Date();
   const minutesUntilClose = Math.max(0, Math.floor((new Date(now.toDateString() + ' 15:30:00') - now) / 60000));
+  const availableCash = (portfolio.cash || 0) + (portfolio.newInvestment || 0);
 
   return {
     portfolio_summary: {
@@ -120,19 +121,21 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dart
       is_near_52low: h.isNear52Low
     })),
     available_cash: (portfolio.cash || 0) + (portfolio.newInvestment || 0),
-    watchlist_top5: watchlist.map(w => ({
-      stock_name: w.stock_name,
-      stock_code: w.stock_code,
-      rsi: w.rsi,
-      macd: w.macd,
-      volume_ratio: w.volume_ratio,
-      foreign_net: w.foreign_net,
-      current_price: w.current_price,
-      reason: w.reason,
-      buyable_qty: w.current_price && ((portfolio.cash || 0) + (portfolio.newInvestment || 0)) > 0
-        ? Math.floor(((portfolio.cash || 0) + (portfolio.newInvestment || 0)) / w.current_price)
-        : null
-    })),
+    watchlist_top5: watchlist
+      .filter(w => !w.current_price || w.current_price <= availableCash)
+      .map(w => ({
+        stock_name: w.stock_name,
+        stock_code: w.stock_code,
+        rsi: w.rsi,
+        macd: w.macd,
+        volume_ratio: w.volume_ratio,
+        foreign_net: w.foreign_net,
+        current_price: w.current_price,
+        reason: w.reason,
+        buyable_qty: w.current_price && availableCash > 0
+          ? Math.floor(availableCash / w.current_price)
+          : null
+      })),
     relevant_news: news.slice(0, 3).map(n => ({
       title: n.title,
       urgency: n.urgency,

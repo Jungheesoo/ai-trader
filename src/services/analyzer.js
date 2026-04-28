@@ -475,15 +475,16 @@ async function runCashMonitor(portfolioSummary) {
     return;
   }
 
-  // 조건: RSI 40~65 + 외국인 또는 기관 순매수 + MACD 골든크로스 or 상승
+  // 조건: RSI 40~65 + 외국인 또는 기관 순매수 + MACD 골든크로스 or 상승 + 현금으로 최소 1주 매수 가능
   const qualified = watchlist.filter(w =>
     w.rsi >= 40 && w.rsi <= 65 &&
     (w.foreign_net > 0 || w.institution_net > 0) &&
-    (w.macd === '골든크로스' || w.macd === '상승중')
+    (w.macd === '골든크로스' || w.macd === '상승중') &&
+    w.current_price > 0 && availCash >= w.current_price
   );
 
   if (qualified.length === 0) {
-    console.log('[CashMonitor] 조건 충족 종목 없음 (RSI 40~65 + 수급 매수 + MACD 상승) — 현금 보유 유지');
+    console.log(`[CashMonitor] 조건 충족 종목 없음 (RSI 40~65 + 수급 매수 + MACD 상승 + 현금 ${availCash.toLocaleString()}원으로 1주 이상 매수 가능) — 현금 보유 유지`);
     return;
   }
 
