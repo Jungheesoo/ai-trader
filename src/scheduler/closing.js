@@ -31,7 +31,8 @@ async function runClosingReport() {
       "SELECT COUNT(*) as cnt FROM analysis WHERE date = ? AND cash_recommendation = '현금보유'"
     ).get(today);
 
-    const dayOfWeek = new Date().getDay();
+    const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const dayOfWeek = kst.getUTCDay();
     const isTomorrow = dayOfWeek === 5 ? '월' : ['일', '월', '화', '수', '목', '금', '토'][dayOfWeek + 1 > 6 ? 0 : dayOfWeek + 1];
     const isBeforeMonday = dayOfWeek === 5; // 금요일이면 다음날 월요일
 
@@ -130,11 +131,24 @@ function formatClosingReport(portfolio, sonnetCount, alertCount, cashHoldCount, 
       if (h.trailingStop) msg += `트레일링: ${h.trailingStop.toLocaleString()}원\n`;
       msg += '\n';
     }
+    const totalSign = (portfolio.overallProfitRate || 0) >= 0 ? '+' : '';
+    const pnlSign = (portfolio.unrealizedPnL || 0) >= 0 ? '+' : '';
+    msg += `총 평가손익: ${pnlSign}${Math.round(portfolio.unrealizedPnL || 0).toLocaleString()}원\n`;
+    msg += `누적 수익률: ${totalSign}${(portfolio.overallProfitRate || 0).toFixed(1)}%\n\n`;
+  } else if (todayTrades && todayTrades.length > 0) {
+    // 오늘 전량 매도 — 보유종목 없음, 실현 손익으로 대체
+    let netPL = 0;
+    for (const t of todayTrades) netPL += (t.total || 0);
+    const netSign = netPL >= 0 ? '+' : '';
+    msg += `오늘 전량 매도 완료 (보유종목 없음)\n`;
+    msg += `오늘 실현 손익: ${netSign}${Math.round(netPL).toLocaleString()}원\n`;
+    const totalSign = (portfolio.overallProfitRate || 0) >= 0 ? '+' : '';
+    msg += `누적 수익률: ${totalSign}${(portfolio.overallProfitRate || 0).toFixed(1)}%\n\n`;
+  } else {
+    msg += `현금 보유 중 (매매 없음)\n`;
+    const totalSign = (portfolio.overallProfitRate || 0) >= 0 ? '+' : '';
+    msg += `누적 수익률: ${totalSign}${(portfolio.overallProfitRate || 0).toFixed(1)}%\n\n`;
   }
-  const totalSign = (portfolio.overallProfitRate || 0) >= 0 ? '+' : '';
-  const pnlSign = (portfolio.unrealizedPnL || 0) >= 0 ? '+' : '';
-  msg += `\n총 평가손익: ${pnlSign}${Math.round(portfolio.unrealizedPnL || 0).toLocaleString()}원\n`;
-  msg += `누적 수익률: ${totalSign}${(portfolio.overallProfitRate || 0).toFixed(1)}%\n\n`;
 
   // ── AI 내일 전망
   msg += `━━━━━━━━━━━━━━\n🌍 내일 전망 및 전략\n━━━━━━━━━━━━━━\n`;
