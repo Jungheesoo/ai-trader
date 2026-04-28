@@ -45,11 +45,6 @@ function setRefreshTokenIssuedAt() {
 }
 
 async function sendMessage(message, stockName = '', alertType = 'info') {
-  if (getTodayCount() >= MAX_PER_DAY) {
-    console.warn('[Telegram] 일일 발송 한도 초과');
-    return false;
-  }
-
   if (isDuplicate(stockName, alertType)) {
     console.warn('[Telegram] 중복 알림 차단:', alertType);
     return false;

@@ -25,15 +25,13 @@ const RSS_SOURCES = [
   {
     name: '파이낸셜뉴스',
     urls: [
-      'http://www.fnnews.com/rss/fn_realnews_stock.xml',
-      'http://www.fnnews.com/rss/fn_realnews_economy.xml',
       'https://news.google.com/rss/search?q=%ED%8C%8C%EC%9D%B4%EB%82%B4%EC%85%9C%EB%89%B4%EC%8A%A4+%EC%A6%9D%EA%B6%8C&hl=ko&gl=KR&ceid=KR:ko'
     ]
   },
   {
     name: '헤럴드경제',
     urls: [
-      'http://biz.heraldm.com/rss/010106000000.xml',
+      'https://www.heraldcorp.com/rss/010106000000.xml',
       'https://news.google.com/rss/search?q=%ED%97%A4%EB%9F%B4%EB%93%9C%EA%B2%BD%EC%A0%9C+%EC%A6%9D%EA%B6%8C&hl=ko&gl=KR&ceid=KR:ko'
     ]
   },

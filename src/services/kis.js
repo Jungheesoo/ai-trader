@@ -253,7 +253,7 @@ function getDateBefore(days) {
 // 기술적 지표 계산 (코드에서 직접 계산 - Claude에 계산 요청 금지)
 function calculateRSI(closes, period = 14) {
   // Wilder's Smoothed RSI — 표준 HTS와 동일한 결과
-  if (!closes || closes.length < period * 2 + 1) return null;
+  if (!closes || closes.length < period + 1) return null;
 
   // 첫 번째 평균 손익 (시드값)
   let avgGain = 0, avgLoss = 0;
@@ -305,11 +305,11 @@ function calculateMACD(closes) {
   const signal = calculateEMA(macdValues, 9);
 
   let crossover = '없음';
-  if (macdValues.length >= 2) {
+  if (macdValues.length >= 2 && signal !== null) {
     const prev = macdValues[macdValues.length - 2];
     const curr = macdValues[macdValues.length - 1];
-    if (prev < (signal || 0) && curr >= (signal || 0)) crossover = '골든크로스';
-    else if (prev > (signal || 0) && curr <= (signal || 0)) crossover = '데드크로스';
+    if (prev < signal && curr >= signal) crossover = '골든크로스';
+    else if (prev > signal && curr <= signal) crossover = '데드크로스';
     else if (curr > 0) crossover = '상승중';
     else crossover = '하락중';
   }

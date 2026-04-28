@@ -14,7 +14,7 @@ function getToday() {
 }
 
 function getCurrentHour() {
-  return new Date().getHours();
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCHours();
 }
 
 function getTodayCallCount(model) {

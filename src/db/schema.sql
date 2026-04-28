@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS watchlist (
   volume_ratio REAL,
   foreign_net INTEGER,
   institution_net INTEGER,
+  current_price REAL,
   reason TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

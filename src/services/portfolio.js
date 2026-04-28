@@ -4,6 +4,7 @@ const { getNaverFinancePrice } = require('./naver');
 const { getTodayKST } = require('./dateutil');
 const { getMarketStatus } = require('../utils/market');
 
+
 function getToday() {
   return getTodayKST();
 }
@@ -62,8 +63,8 @@ async function enrichHoldingsWithPrices(holdings) {
         if (!stockData) {
           console.warn(`[Portfolio] KIS 실패(${h.stock_code}) → 네이버 백업`);
           try {
-            const { sendErrorAlert } = require('./alert');
-            await sendErrorAlert(`⚠️ [KIS API 장애] ${h.stock_name} 데이터 조회 실패. 네이버 금융으로 전환합니다.`);
+            const { sendMessage } = require('./kakao');
+            await sendMessage(`[KIS API 장애] ${h.stock_name} 데이터 조회 실패. 네이버 금융으로 전환합니다.`, '', 'kis_down');
           } catch (e) { /* silent */ }
           const backup = await getNaverFinancePrice(h.stock_code);
           if (backup) {

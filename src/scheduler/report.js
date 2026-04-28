@@ -30,7 +30,7 @@ async function runMorningReport() {
     try {
       const allNews = await fetchAllRSS();
       const filtered = await filterNewsBatch(allNews.slice(0, 30), portfolio.holdings, watchlistNames);
-      relevantNews = filtered.filter(n => n.relevant);
+      relevantNews = filtered.filter(n => n.relevant === true);
     } catch (e) {
       console.warn('[Report] 뉴스 수집 실패:', e.message);
     }

@@ -67,7 +67,7 @@ async function filterNews(newsText, holdings, watchlistNames = []) {
       'https://api.anthropic.com/v1/messages',
       {
         model: MODEL,
-        max_tokens: 150,
+        max_tokens: 300,
         temperature: 0,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: prompt }]

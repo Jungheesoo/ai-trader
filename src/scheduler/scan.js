@@ -152,6 +152,7 @@ async function runScan() {
           volume_ratio: volumeRatio,
           foreign_net: investorData?.foreignNet ?? 0,
           institution_net: investorData?.institutionNet ?? 0,
+          current_price: priceData.price,
           score,
           reason: scoreReasons.join(', ') || `스코어: ${score}`
         });
@@ -165,10 +166,10 @@ async function runScan() {
     const top20 = results.slice(0, 20);
 
     const stmt = db.prepare(
-      'INSERT INTO watchlist (date, stock_name, stock_code, rsi, macd, volume_ratio, foreign_net, institution_net, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO watchlist (date, stock_name, stock_code, rsi, macd, volume_ratio, foreign_net, institution_net, current_price, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     for (const r of top20) {
-      stmt.run(today, r.stock_name, r.stock_code, r.rsi, r.macd, r.volume_ratio, r.foreign_net, r.institution_net, r.reason || `스코어: ${r.score}`);
+      stmt.run(today, r.stock_name, r.stock_code, r.rsi, r.macd, r.volume_ratio, r.foreign_net, r.institution_net, r.current_price, r.reason || `스코어: ${r.score}`);
     }
 
     console.log(`[Scan] 완료. 상위 ${top20.length}종목 저장.`);

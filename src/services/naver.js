@@ -58,21 +58,33 @@ async function getStockNews(stockName) {
 }
 
 async function getNaverFinancePrice(stockCode) {
-  try {
-    const url = `https://finance.naver.com/item/main.naver?code=${stockCode}`;
-    const res = await axios.get(url, {
-      headers: { 'User-Agent': USER_AGENT },
-      timeout: 10000
-    });
-    const $ = cheerio.load(res.data);
-    const priceText = ($('.no_today .blind').first().text() || $('.today .blind').first().text()).replace(/,/g, '');
-    const price = parseFloat(priceText);
-    if (!price || isNaN(price)) throw new Error('가격 파싱 실패');
-    return { price, source: 'naver_backup', delayed: true };
-  } catch (err) {
-    console.error('[Naver Finance] 백업 가격 수집 실패:', err.message);
-    return null;
+  const urls = [
+    `https://finance.naver.com/item/main.naver?code=${stockCode}`,
+    `https://m.stock.naver.com/domestic/stock/${stockCode}/total`
+  ];
+  for (const url of urls) {
+    try {
+      const res = await axios.get(url, {
+        headers: { 'User-Agent': USER_AGENT, Referer: 'https://finance.naver.com' },
+        timeout: 10000
+      });
+      const $ = cheerio.load(res.data);
+      const candidates = [
+        $('.no_today .blind').first().text(),
+        $('.today .blind').first().text(),
+        $('#_nowVal').first().text(),
+        $('[class*="price"]').first().text()
+      ];
+      for (const c of candidates) {
+        const price = parseFloat(c.replace(/,/g, ''));
+        if (price > 0 && !isNaN(price)) {
+          return { price, source: 'naver_backup', delayed: true };
+        }
+      }
+    } catch { /* 다음 URL 시도 */ }
   }
+  console.error('[Naver Finance] 백업 가격 수집 실패: 모든 URL 실패');
+  return null;
 }
 
 // 시장 전체 키워드 (보유 종목 외 시장 흐름 파악용)

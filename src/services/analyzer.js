@@ -6,33 +6,42 @@ const cheerio = require('cheerio');
 const { getTodayKST } = require('./dateutil');
 
 async function fetchUsMarketStatus() {
-  try {
-    const indices = [
-      { name: 'NASDAQ', url: 'https://www.google.com/finance/quote/.IXIC:INDEXNASDAQ' },
-      { name: 'S&P500', url: 'https://www.google.com/finance/quote/.INX:INDEXSP' },
-      { name: '다우', url: 'https://www.google.com/finance/quote/.DJI:INDEXDJX' }
-    ];
-    const results = [];
-    for (const idx of indices) {
+  const indices = [
+    { name: 'NASDAQ', code: 'NAS', futuresCode: 'NQF' },
+    { name: 'S&P500', code: 'SPI', futuresCode: 'ESF' },
+    { name: '다우', code: 'DJI', futuresCode: null }
+  ];
+  const results = [];
+  for (const idx of indices) {
+    let changeRate = null;
+    let futures = undefined;
+    try {
+      const res = await axios.get(`https://finance.naver.com/world/sise.naver?symbol=${idx.code}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', Referer: 'https://finance.naver.com' },
+        timeout: 8000
+      });
+      const $ = cheerio.load(res.data);
+      const rateText = $('.rate_info .blind').last().text().replace(/[^0-9.+-]/g, '');
+      changeRate = rateText ? parseFloat(rateText) : null;
+    } catch { /* silent */ }
+
+    if (idx.futuresCode) {
       try {
-        const res = await axios.get(idx.url, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' },
+        const res = await axios.get(`https://finance.naver.com/world/sise.naver?symbol=${idx.futuresCode}`, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', Referer: 'https://finance.naver.com' },
           timeout: 8000
         });
         const $ = cheerio.load(res.data);
-        const changeText = $('[jsname="Fe7oBc"]').first().attr('aria-label') || '';
-        const numMatch = changeText.match(/(\d+\.?\d*)\s*%/);
-        const isDown = /down/i.test(changeText);
-        const changeRate = numMatch ? parseFloat(numMatch[1]) * (isDown ? -1 : 1) : null;
-        results.push({ name: idx.name, changeRate });
+        const rateText = $('.rate_info .blind').last().text().replace(/[^0-9.+-]/g, '');
+        futures = rateText ? parseFloat(rateText) : null;
       } catch {
-        results.push({ name: idx.name, changeRate: null });
+        futures = null;
       }
     }
-    return results;
-  } catch {
-    return [];
+
+    results.push({ name: idx.name, changeRate, ...(idx.futuresCode !== null ? { futures } : {}) });
   }
+  return results;
 }
 
 // Sonnet 호출 조건 체크 (프롬프트 섹션 12 전체 반영)
@@ -127,7 +136,7 @@ RSI: ${h.rsi ?? '데이터없음'} / MACD: ${h.macd ?? '데이터없음'} / 거�
   }).join('\n---');
 
   const usMarketText = usMarket.length > 0
-    ? usMarket.map(m => `${m.name}: ${m.changeRate !== null ? (m.changeRate >= 0 ? '+' : '') + m.changeRate + '%' : '데이터없음'}`).join(' / ')
+    ? usMarket.map(m => `${m.name}: ${m.changeRate !== null ? (m.changeRate >= 0 ? '+' : '') + m.changeRate + '%' : '데이터없음'}${m.futures !== undefined ? ` (선물 ${m.futures !== null ? (m.futures >= 0 ? '+' : '') + m.futures + '%' : '데이터없음'})` : ''}`).join(' / ')
     : '데이터없음 (크롤링 실패)';
 
   // 뉴스 최적화: 최대 5건, 제목 + 50자 요약만 전달 (Sonnet 입력 토큰 절감)
@@ -151,7 +160,8 @@ RSI: ${h.rsi ?? '데이터없음'} / MACD: ${h.macd ?? '데이터없음'} / 거�
   // watchlist 상위 5종목 (갈아타기 후보 비교용)
   const watchlistText = (watchlist || []).slice(0, 5).map(w => {
     const foreignDir = w.foreign_net > 0 ? '외인매수' : w.foreign_net < 0 ? '외인매도' : '외인중립';
-    return `${w.stock_name}(${w.stock_code || '-'}): RSI ${w.rsi ?? '-'}, MACD ${w.macd ?? '-'}, 거래량배수 ${w.volume_ratio ?? '-'}, ${foreignDir}`;
+    const priceStr = w.current_price ? ` 현재가 ${w.current_price.toLocaleString()}원` : '';
+    return `${w.stock_name}(${w.stock_code || '-'})${priceStr}: RSI ${w.rsi ?? '-'}, MACD ${w.macd ?? '-'}, 거래량배수 ${w.volume_ratio ?? '-'}, ${foreignDir}`;
   }).join('\n');
 
   // Haiku가 뉴스에서 포착한 신규 진입 후보 종목
@@ -281,14 +291,14 @@ async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, co
 
 async function runMorningReport(enrichedHoldings, assets, allNews, watchlist) {
   const haikuResults = await filterNewsBatch(allNews.slice(0, 20), enrichedHoldings);
-  const relevantNews = haikuResults.filter(r => r.result?.relevant === true);
+  const relevantNews = haikuResults.filter(r => r.relevant === true);
   const prompt = buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, '이것은 모닝 리포트입니다. 오늘 하루 전체 전략을 제시하세요.');
   return callSonnet(prompt);
 }
 
 async function runClosingReport(enrichedHoldings, assets, allNews) {
   const haikuResults = await filterNewsBatch(allNews.slice(0, 10), enrichedHoldings);
-  const relevantNews = haikuResults.filter(r => r.result?.relevant === true);
+  const relevantNews = haikuResults.filter(r => r.relevant === true);
   const prompt = buildSonnetPrompt(enrichedHoldings, assets, relevantNews, [], '이것은 마감 리포트입니다. 오늘 결산 및 내일 전략을 제시하세요.');
   return callSonnet(prompt);
 }
@@ -387,11 +397,8 @@ async function runAnalysisPipeline(portfolioSummary) {
   if (result.triggered && result.analysis) {
     const a = result.analysis;
 
-    // 보유 종목별로 개별 알림 (첫 번째 종목에만 보내던 버그 수정)
     if (a.action && a.action !== '보유유지' && a.action !== '판단불가') {
-      for (const holding of holdings) {
-        await sendUrgentAlert(holding, a, result.relevantNews || []);
-      }
+      await sendUrgentAlert(holdings[0], a, result.relevantNews || []);
     }
 
     // DB 저장 (new 컬럼 포함)
