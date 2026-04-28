@@ -398,10 +398,11 @@ async function getFullStockData(stockCode) {
   const [priceData, chartData, investorData] = await Promise.all([
     getCurrentPrice(stockCode),
     getDailyChart(stockCode, 60),
-    getInvestorData(stockCode)
+    getInvestorData(stockCode).catch(() => null)  // 수급 실패해도 현재가/차트는 유지
   ]);
 
   if (!priceData || !chartData || chartData.length < 20) return null;
+  if (!investorData) console.warn(`[KIS] ${stockCode} 수급 데이터 없음 — 현재가/차트만 사용`);
 
   const closes = chartData.map(d => d.close);
   const highs = chartData.map(d => d.high);
