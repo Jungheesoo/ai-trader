@@ -47,26 +47,28 @@ function isHoliday(date) {
 function isMarketOpen(date) {
   const d = date instanceof Date ? date : new Date(date);
   if (isHoliday(d)) return false;
-  const hours = d.getHours();
-  const minutes = d.getMinutes();
-  const totalMinutes = hours * 60 + minutes;
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const totalMinutes = kst.getUTCHours() * 60 + kst.getUTCMinutes();
   return totalMinutes >= 9 * 60 && totalMinutes < 15 * 60 + 30;
 }
 
 function isWeekday(date) {
   const d = date instanceof Date ? date : new Date(date);
-  const day = d.getDay();
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const day = kst.getUTCDay();
   return day >= 1 && day <= 5 && !isHoliday(d);
 }
 
 function isFriday(date) {
   const d = date instanceof Date ? date : new Date(date);
-  return d.getDay() === 5 && !isHoliday(d);
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return kst.getUTCDay() === 5 && !isHoliday(d);
 }
 
 function isMonday(date) {
   const d = date instanceof Date ? date : new Date(date);
-  return d.getDay() === 1 && !isHoliday(d);
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return kst.getUTCDay() === 1 && !isHoliday(d);
 }
 
 function getNextTradingDay(date) {
