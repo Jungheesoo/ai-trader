@@ -114,8 +114,10 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dart
       institution_consecutive_days: h.institutionConsecutiveDays,
       investor_data_date: h.investorDataDate,
       investor_is_today: h.investorIsToday,
-      short_target_price: h.current_price ? Math.round(h.current_price * 1.05) : null,
-      stop_loss_price: h.avg_price ? Math.round(h.avg_price * 0.95) : null
+      week52_high: h.week52High,
+      week52_low: h.week52Low,
+      is_near_52high: h.isNear52High,
+      is_near_52low: h.isNear52Low
     })),
     watchlist_top5: watchlist.map(w => ({
       stock_name: w.stock_name,
@@ -180,18 +182,14 @@ function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relev
       if (h.bollingerBands) {
         msg += `BB: 상단 ${h.bollingerBands.upper.toLocaleString()} / 중단 ${h.bollingerBands.middle.toLocaleString()} / 하단 ${h.bollingerBands.lower.toLocaleString()}\n`;
       }
-      const shortTarget = h.current_price ? Math.round(h.current_price * 1.05) : null;
-      const stopLoss = h.avg_price ? Math.round(h.avg_price * 0.95) : null;
-      if (shortTarget) msg += `🎯 목표가: ${shortTarget.toLocaleString()}원 (+5%)\n`;
-      if (stopLoss) msg += `🛑 손절가: ${stopLoss.toLocaleString()}원 (-5%)\n`;
       if (h.trailingStop) msg += `⚡ 트레일링: ${h.trailingStop.toLocaleString()}원\n`;
       msg += '\n';
     }
 
     msg += `→ AI: ${ai.action || '판단불가'} [신뢰도: ${ai.confidence || '?'}]\n`;
     if (ai.current_upside) msg += `현재 종목 예상 추가 수익: ${ai.current_upside}\n`;
-    if (ai.target_price) msg += `🎯 AI 목표가: ${Math.round(ai.target_price).toLocaleString()}원${ai.why_target_price ? ` — ${ai.why_target_price}` : ''}\n`;
-    if (ai.stop_loss) msg += `🛡 AI 손절가: ${Math.round(ai.stop_loss).toLocaleString()}원${ai.why_stop_loss ? ` — ${ai.why_stop_loss}` : ''}\n`;
+    if (ai.target_price) msg += `🎯 목표가: ${Math.round(ai.target_price).toLocaleString()}원${ai.why_target_price ? ` — ${ai.why_target_price}` : ''}\n`;
+    if (ai.stop_loss) msg += `🛡 손절가: ${Math.round(ai.stop_loss).toLocaleString()}원${ai.why_stop_loss ? ` — ${ai.why_stop_loss}` : ''}\n`;
     msg += `근거: ${(ai.reason || '-').slice(0, 120)}\n\n`;
   }
 

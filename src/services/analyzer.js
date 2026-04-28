@@ -109,9 +109,6 @@ function buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, co
   const isMonday = now.getDay() === 1;
 
   const holdingsText = enrichedHoldings.map(h => {
-    // 코드에서 계산 (Sonnet은 계산 안 함)
-    const shortTarget = h.current_price ? Math.round(h.current_price * 1.05) : null;
-    const stopLoss = h.avg_price ? Math.round(h.avg_price * 0.95) : null;
     const bbText = h.bollingerBands
       ? `상단 ${h.bollingerBands.upper.toLocaleString()} / 중단 ${h.bollingerBands.middle.toLocaleString()} / 하단 ${h.bollingerBands.lower.toLocaleString()}`
       : '데이터없음';
@@ -138,9 +135,7 @@ RSI: ${h.rsi ?? '데이터없음'} / MACD: ${h.macd ?? '데이터없음'} / 거�
 외인연속순매수: ${h.foreignConsecutiveDays !== null ? h.foreignConsecutiveDays + '일' : '데이터없음'}
 기관순매수: ${h.institutionNet !== null ? h.institutionNet.toLocaleString() + '주' : '데이터없음'} ${investorDateNote}
 기관연속순매수: ${h.institutionConsecutiveDays !== null ? h.institutionConsecutiveDays + '일' : '데이터없음'}
-트레일링스탑(DB고가기준): ${h.trailingStop?.toLocaleString() ?? '데이터없음'}원
-단기목표가(시스템계산+5%): ${shortTarget?.toLocaleString() ?? '데이터없음'}원
-손절가(시스템계산-5%): ${stopLoss?.toLocaleString() ?? '데이터없음'}원`;
+트레일링스탑(DB고가기준): ${h.trailingStop?.toLocaleString() ?? '데이터없음'}원`;
   }).join('\n---');
 
   const usMarketText = usMarket.length > 0
