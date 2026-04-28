@@ -229,7 +229,7 @@ async function getDailyChart(stockCode, days = 60) {
   });
 }
 
-async function getInvestorData(stockCode, { noRetry = false } = {}) {
+async function getInvestorData(stockCode, { noRetry = false, scanMode = false } = {}) {
   const runner = async () => {
     const token = await getToken();
     if (!token) throw new Error('토큰 없음');
