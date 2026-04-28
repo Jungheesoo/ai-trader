@@ -96,11 +96,12 @@ async function runScan() {
 
     for (const stock of candidates) {
       try {
-        await delay(150); // KIS API 초당 20회 제한 준수
-        const [chartData, investorData] = await Promise.allSettled([
-          getDailyChart(stock.code, 60),
-          getInvestorData(stock.code, { noRetry: true })
-        ]);
+        await delay(400); // KIS API 과부하 방지 — 동시 호출 대신 순차 처리
+        const chart = await getDailyChart(stock.code, 60).catch(() => null);
+        await delay(300);
+        const investor = await getInvestorData(stock.code, { scanMode: true }).catch(() => null);
+        const chartData = { status: chart ? 'fulfilled' : 'rejected', value: chart };
+        const investorData = { status: investor ? 'fulfilled' : 'rejected', value: investor };
 
         const chart = chartData.status === 'fulfilled' ? chartData.value : null;
         const investor = investorData.status === 'fulfilled' ? investorData.value : null;

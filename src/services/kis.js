@@ -233,7 +233,7 @@ async function getInvestorData(stockCode, { noRetry = false } = {}) {
   const runner = async () => {
     const token = await getToken();
     if (!token) throw new Error('토큰 없음');
-    await delay(100);
+    await delay(200);
     const res = await axios.get(`${BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-investor`, {
       params: { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: stockCode },
       headers: {
@@ -300,6 +300,16 @@ async function getInvestorData(stockCode, { noRetry = false } = {}) {
   };
   if (noRetry) {
     try { return await runner(); } catch (e) { return null; }
+  }
+  // scanMode: 500 오류 재시도 간격을 3초/5초로 단축 (스캔 전체 시간 절약)
+  if (options?.scanMode) {
+    for (let i = 0; i < 2; i++) {
+      try { return await runner(); } catch (e) {
+        if (e.response?.status === 500 && i === 0) { await delay(3000); continue; }
+        return null;
+      }
+    }
+    return null;
   }
   return requestWithRetry(runner);
 }
