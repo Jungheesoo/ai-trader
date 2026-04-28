@@ -42,9 +42,9 @@ async function runMorningReport() {
       console.warn('[Report] DART 수집 실패:', e.message);
     }
 
-    const dayOfWeek = new Date().getDay();
-    const isFriday = dayOfWeek === 5;
-    const isMonday = dayOfWeek === 1;
+    const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const isFriday = kst.getUTCDay() === 5;
+    const isMonday = kst.getUTCDay() === 1;
 
     const prompt = buildMorningPrompt(portfolio, watchlist, relevantNews, isFriday, isMonday, dartDisclosures);
     const result = await callSonnet(prompt, 'morning_report');
@@ -145,7 +145,7 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dart
       stockName: d.stockName, title: d.title, type: d.type, impact: d.impact, icon: d.icon
     })),
     market_context: {
-      day_of_week: ['일', '월', '화', '수', '목', '금', '토'][new Date().getDay()],
+      day_of_week: ['일', '월', '화', '수', '목', '금', '토'][new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCDay()],
       is_friday: isFriday,
       is_monday: isMonday,
       minutes_until_close: minutesUntilClose,
@@ -161,7 +161,7 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dart
 }
 
 function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relevantNews, dartDisclosures = []) {
-  const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const serverUrl = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
 
   let msg = `📊 AI 트레이더 모닝 리포트 ${today}\n\n`;

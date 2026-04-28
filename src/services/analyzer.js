@@ -100,11 +100,12 @@ function shouldCallSonnet(holding, news = [], watchlistCandidate = null) {
 
 function buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, context, dartDisclosures = [], usMarket = [], candidateStocks = []) {
   const now = new Date();
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
   const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-  const dayName = dayNames[now.getDay()];
+  const dayName = dayNames[kst.getUTCDay()];
   const minutesLeft = getMinutesUntilClose();
-  const isFriday = now.getDay() === 5;
-  const isMonday = now.getDay() === 1;
+  const isFriday = kst.getUTCDay() === 5;
+  const isMonday = kst.getUTCDay() === 1;
 
   const holdingsText = enrichedHoldings.map(h => {
     const bbText = h.bollingerBands
