@@ -419,7 +419,6 @@ function isTradingHours() {
 }
 
 setInterval(async () => {
-  if (sseConnected) return; // SSE 연결 중이면 폴링 불필요
   if (!isTradingHours()) return;
   try {
     const res = await fetch('/api/portfolio');
