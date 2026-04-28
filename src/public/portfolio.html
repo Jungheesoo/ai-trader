@@ -157,8 +157,8 @@ async function savePortfolio() {
   const cash = parseNum(document.getElementById('cash-input').value) || 0;
   const newInvestment = parseNum(document.getElementById('new-invest-input').value) || 0;
 
-  if (holdings.length === 0) {
-    showBanner('error', '보유 종목을 1개 이상 입력해주세요.');
+  if (holdings.length === 0 && cash === 0) {
+    showBanner('error', '보유 종목 또는 현금을 입력해주세요.');
     return;
   }
 
