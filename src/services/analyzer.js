@@ -433,10 +433,23 @@ async function runAnalysisPipeline(portfolioSummary) {
   if (result.triggered && result.analysis) {
     const a = result.analysis;
 
-    // switch_stock.code 유효성 검증 — 6자리 숫자 아니면 null 처리
-    if (a.switch_stock?.code && !/^\d{6}$/.test(a.switch_stock.code)) {
-      console.warn(`[Pipeline] switch_stock.code 무효: ${a.switch_stock.code} → null 처리`);
-      a.switch_stock.code = null;
+    // switch_stock 유효성 검증
+    if (a.switch_stock?.name) {
+      // 6자리 코드 형식 검증
+      if (a.switch_stock.code && !/^\d{6}$/.test(a.switch_stock.code)) {
+        console.warn(`[Pipeline] switch_stock.code 무효: ${a.switch_stock.code} → null 처리`);
+        a.switch_stock.code = null;
+      }
+      // watchlist에 없는 종목 추천 차단 (Sonnet 환각 방지)
+      const watchlistNames = watchlist.map(w => w.stock_name);
+      const watchlistCodes = watchlist.map(w => w.stock_code).filter(Boolean);
+      const inWatchlist = watchlistNames.includes(a.switch_stock.name) ||
+        (a.switch_stock.code && watchlistCodes.includes(a.switch_stock.code));
+      if (!inWatchlist) {
+        console.warn(`[Pipeline] switch_stock '${a.switch_stock.name}' watchlist 미포함 → 차단`);
+        a.switch_stock = null;
+        if (['switch_stock', 'buy_new'].includes(a.action)) a.action = '판단불가';
+      }
     }
 
     if (a.action && a.action !== '보유유지' && a.action !== '판단불가') {

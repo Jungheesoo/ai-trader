@@ -167,6 +167,9 @@ async function start() {
     for (const key of requiredEnv) {
       if (!process.env[key]) console.warn(`[Config] ⚠️  ${key} 미설정`);
     }
+    if (!process.env.DART_API_KEY) {
+      console.warn('[Config] ⚠️  DART_API_KEY 미설정 — 공시(횡령/어닝쇼크/수주 등) 모니터링 비활성화');
+    }
     if (!process.env.SERVER_IP || process.env.SERVER_IP.includes('여기에')) {
       console.warn('[Config] ⚠️  SERVER_IP 미설정 - 링크가 localhost로 표시됩니다.');
     }

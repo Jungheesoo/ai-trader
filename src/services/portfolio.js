@@ -88,10 +88,11 @@ async function enrichHoldingsWithPrices(holdings) {
       } catch (e) { /* DB 업데이트 실패 무시 */ }
     }
 
-    // DB에 저장된 과거 현재가 중 최고가로 트레일링 스탑 계산
+    // DB에 저장된 최근 30일 현재가 중 최고가로 트레일링 스탑 계산
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const dbHighPrice = db.prepare(
-      'SELECT MAX(current_price) as high FROM holdings WHERE stock_code = ? AND current_price IS NOT NULL'
-    ).get(h.stock_code)?.high || null;
+      'SELECT MAX(current_price) as high FROM holdings WHERE stock_code = ? AND current_price IS NOT NULL AND date >= ?'
+    ).get(h.stock_code, thirtyDaysAgo)?.high || null;
     const trailingStopBase = dbHighPrice
       ? Math.max(dbHighPrice, currentPrice)
       : (stockData?.week52High || currentPrice);
