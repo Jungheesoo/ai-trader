@@ -10,7 +10,8 @@ const API_KEY = process.env.DART_API_KEY;
 const URGENT_BAD = [
   '파업', '총파업', '횡령', '배임', '구속', '압수수색',
   '리콜', '생산중단', '상장폐지', '관리종목', '어닝쇼크',
-  '적자전환', '경영권분쟁', '소송', '과징금', '영업정지'
+  '적자전환', '경영권분쟁', '소송', '과징금', '영업정지',
+  '유상증자', '전환사채', '신주인수권부사채'
 ];
 
 // 호재성 공시: 수주·계약·실적 개선
@@ -25,7 +26,7 @@ const POSITIVE = [
 const IMPORTANT = [
   '사업보고서', '분기보고서', '반기보고서',
   '영업실적', '잠정실적', '연간실적',
-  '유상증자', '전환사채', '신주인수권', '합병', '분할',
+  '합병', '분할',
   '최대주주변경', '임원변경', '대표이사변경'
 ];
 
@@ -96,13 +97,21 @@ async function getDisclosures(corpCode, days = 1) {
 
 async function getCorpCode(stockName) {
   if (!API_KEY) return null;
+  const db = getDb();
+  const cached = db.prepare('SELECT corp_code FROM dart_codes WHERE stock_name = ?').get(stockName);
+  if (cached) {
+    console.log(`[DART] 기업코드 DB 캐시 hit: ${stockName}`);
+    return cached.corp_code;
+  }
   try {
     const res = await axios.get('https://opendart.fss.or.kr/api/company.json', {
       params: { crtfc_key: API_KEY, corp_name: stockName },
       timeout: 10000
     });
     if (res.data.status !== '000' || !res.data.list?.length) return null;
-    return res.data.list[0].corp_code;
+    const corpCode = res.data.list[0].corp_code;
+    db.prepare('INSERT OR IGNORE INTO dart_codes (stock_name, corp_code, updated_at) VALUES (?, ?, ?)').run(stockName, corpCode, new Date().toISOString());
+    return corpCode;
   } catch (err) {
     console.error('[DART] 기업 검색 실패:', err.message);
     return null;

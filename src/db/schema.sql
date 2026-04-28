@@ -130,6 +130,12 @@ CREATE TABLE IF NOT EXISTS trades (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS dart_codes (
+  stock_name TEXT PRIMARY KEY,
+  corp_code TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(date);
 CREATE INDEX IF NOT EXISTS idx_news_cache_date ON news_cache(date);
 CREATE INDEX IF NOT EXISTS idx_news_cache_url ON news_cache(url);

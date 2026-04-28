@@ -448,11 +448,23 @@ async function runAnalysisPipeline(portfolioSummary) {
       if (!inWatchlist) {
         console.warn(`[Pipeline] switch_stock '${a.switch_stock.name}' watchlist 미포함 → 차단`);
         a.switch_stock = null;
-        if (['switch_stock', 'buy_new'].includes(a.action)) a.action = '판단불가';
+        if (['switch_stock', 'buy_new', '갈아타기', '추가매수'].includes(a.action)) a.action = '판단불가';
       }
     }
 
-    if (a.action && a.action !== '보유유지' && a.action !== '판단불가') {
+    const cp = holdings[0]?.current_price;
+    if (cp) {
+      if (a.target_price && (a.target_price < cp * 0.9 || a.target_price > cp * 2)) {
+        console.warn(`[Pipeline] target_price 비정상(${a.target_price}) → null`);
+        a.target_price = null;
+      }
+      if (a.stop_loss && (a.stop_loss > cp * 1.05 || a.stop_loss < cp * 0.8)) {
+        console.warn(`[Pipeline] stop_loss 비정상(${a.stop_loss}) → null`);
+        a.stop_loss = null;
+      }
+    }
+
+    if (a.action && !['보유유지', '판단불가', '현금보유'].includes(a.action)) {
       await sendUrgentAlert(holdings[0], a, result.relevantNews || []);
     }
 

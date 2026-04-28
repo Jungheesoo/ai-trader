@@ -52,6 +52,13 @@ function canCallSonnet() {
     hourCallCount = 0;
   }
 
+  if (lastSonnetCallTime === 0 && hourCallCount === 0) {
+    const todayCount = getTodayCallCount('sonnet');
+    if (todayCount > 0) {
+      hourCallCount = Math.min(todayCount, SONNET_MAX_PER_HOUR);
+    }
+  }
+
   const now = Date.now();
   if (now - lastSonnetCallTime < SONNET_MIN_INTERVAL_MS) {
     const waitSec = Math.ceil((SONNET_MIN_INTERVAL_MS - (now - lastSonnetCallTime)) / 1000);

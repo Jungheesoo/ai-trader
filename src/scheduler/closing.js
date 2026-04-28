@@ -102,7 +102,7 @@ async function runClosingReport() {
 }
 
 function formatClosingReport(portfolio, sonnetCount, alertCount, cashHoldCount, ai, isBeforeMonday, todayTrades = []) {
-  const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace('.', '');
+  const today = getTodayKST();
   const serverUrl = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
 
   let msg = `📋 AI 트레이더 마감 결산 ${today}\n\n`;

@@ -166,6 +166,7 @@ async function connect(stockCodes = []) {
     console.log('[KIS-WS] 연결 종료');
     isConnecting = false;
     ws = null;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     // 장 중이면 30초 후 재연결
     if (isMarketOpen()) {
       reconnectTimer = setTimeout(() => connect(subscribedCodes), 30000);

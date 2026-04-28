@@ -67,7 +67,7 @@ async function runNightMonitor() {
     const allNews = await collectNightNews();
 
     const serverUrl = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
-    const hour = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    const hour = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(11, 16);
 
     // 나스닥 -3% 이상 급락 → 즉시 긴급 알림
     const nasdaq = usMarket.find(m => m.name === 'NASDAQ');
