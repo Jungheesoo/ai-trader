@@ -78,6 +78,8 @@ async function runClosingReport() {
         cash_hold_count: cashHoldCount?.cnt || 0
       },
       market_context: {
+        today,
+        report_time: 'KST 16:00 마감리포트 — 오늘 장 마감 후 분석',
         day_of_week: ['일', '월', '화', '수', '목', '금', '토'][dayOfWeek],
         is_before_monday: isBeforeMonday,
         sox_index: sox ?? '미국 장 개장 전 — SOX 전일종가 기준 반영 불가',

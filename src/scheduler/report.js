@@ -147,6 +147,8 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dart
       stockName: d.stockName, title: d.title, type: d.type, impact: d.impact, icon: d.icon
     })),
     market_context: {
+      today: new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      report_time: 'KST 08:30 모닝리포트 — 오늘 장 시작 전 분석',
       day_of_week: ['일', '월', '화', '수', '목', '금', '토'][new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCDay()],
       is_friday: isFriday,
       is_monday: isMonday,
