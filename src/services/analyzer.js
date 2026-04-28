@@ -44,57 +44,55 @@ async function fetchUsMarketStatus() {
   return results;
 }
 
-// Sonnet 호출 조건 체크 (프롬프트 섹션 12 전체 반영)
+// Sonnet 호출 조건 체크
 function shouldCallSonnet(holding, news = [], watchlistCandidate = null) {
   const reasons = [];
 
-  // 1. 주가 ±3% 이상 변동
-  if (holding.changeRate !== null && Math.abs(holding.changeRate) >= 3) {
-    reasons.push(`주가 ${holding.changeRate}% 변동`);
+  // 1. 주가 상승 +3% (익절 검토) 또는 하락 -2% (손절 검토) — 방향 분리
+  if (holding.changeRate !== null && holding.changeRate >= 3) {
+    reasons.push(`주가 +${holding.changeRate}% 상승`);
   }
-  // 2. 거래량 평소 대비 2배 이상
-  if (holding.volumeRatio !== null && holding.volumeRatio >= 2) {
-    reasons.push(`거래량 ${holding.volumeRatio}배`);
+  if (holding.changeRate !== null && holding.changeRate <= -2) {
+    reasons.push(`주가 ${holding.changeRate}% 하락 — 손절 검토`);
   }
-  // 3. 외국인 대량 매도/매수
-  if (holding.foreignNet !== null && Math.abs(holding.foreignNet) > 100000) {
-    reasons.push('외국인 대량 매매');
+  // 2. 거래량 2배 이상 + 가격 방향 결합
+  if (holding.volumeRatio !== null && holding.volumeRatio >= 2 && holding.changeRate !== null) {
+    reasons.push(`거래량 ${holding.volumeRatio}배 + ${holding.changeRate >= 0 ? '상승' : '하락'}`);
   }
-  // 4. 기관 대량 매도/매수
-  if (holding.institutionNet !== null && Math.abs(holding.institutionNet) > 100000) {
-    reasons.push('기관 대량 매매');
+  // 3. 외국인 순매도 전환 (시총 대비 — 절대값 대신 연속 매도일 기준)
+  if (holding.foreignConsecutiveDays !== null && holding.foreignConsecutiveDays <= -2) {
+    reasons.push(`외국인 ${Math.abs(holding.foreignConsecutiveDays)}일 연속 매도`);
   }
-  // 5. Haiku yes 뉴스
+  if (holding.foreignNet !== null && holding.foreignNet > 50000) {
+    reasons.push('외국인 대량 매수');
+  }
+  // 4. 기관 연속 매도
+  if (holding.institutionConsecutiveDays !== null && holding.institutionConsecutiveDays <= -2) {
+    reasons.push(`기관 ${Math.abs(holding.institutionConsecutiveDays)}일 연속 매도`);
+  }
+  // 5. Haiku 필터 통과 뉴스
   if (news.length > 0) {
     reasons.push('영향 뉴스 감지');
   }
-  // 6. 트레일링 스탑 도달 (고점 -7%)
+  // 6. 트레일링 스탑 도달 (고점 -7%) — 최우선 손절
   if (holding.trailingStop && holding.current_price <= holding.trailingStop) {
     reasons.push('트레일링 스탑 도달');
   }
-  // 7. 목표가 도달
+  // 7. 목표가 도달 — 익절
   if (holding.target_price && holding.current_price >= holding.target_price) {
     reasons.push('목표가 도달');
   }
-  // 8. RSI 70 이상 또는 30 이하
-  if (holding.rsi !== null && (holding.rsi >= 70 || holding.rsi <= 30)) {
-    reasons.push(`RSI ${holding.rsi}`);
+  // 8. RSI 75 이상 (과매수 과열) + 거래량 감소 동반 시만 익절 시그널
+  if (holding.rsi !== null && holding.rsi >= 75 && holding.volumeRatio !== null && holding.volumeRatio < 1) {
+    reasons.push(`RSI ${holding.rsi} 과열 + 거래량 감소`);
   }
-  // 9. MACD 데드크로스 또는 골든크로스
-  if (holding.macd === '데드크로스' || holding.macd === '골든크로스') {
-    reasons.push(`MACD ${holding.macd}`);
+  // 9. RSI 28 이하 — 과매도 (반등 or 추가 하락 판단)
+  if (holding.rsi !== null && holding.rsi <= 28) {
+    reasons.push(`RSI ${holding.rsi} 과매도`);
   }
-  // 10. 기회비용 계산 - 대체 종목이 현재 종목보다 2배 이상 유리
-  if (watchlistCandidate && holding.current_price && holding.avg_price) {
-    const currentUpside = holding.target_price
-      ? ((holding.target_price - holding.current_price) / holding.current_price) * 100
-      : null;
-    const candidateUpside = watchlistCandidate.target_price
-      ? ((watchlistCandidate.target_price - watchlistCandidate.current_price) / watchlistCandidate.current_price) * 100
-      : null;
-    if (currentUpside !== null && candidateUpside !== null && candidateUpside >= currentUpside * 2) {
-      reasons.push(`기회비용: ${watchlistCandidate.stock_name} 대체 유리 (${candidateUpside.toFixed(1)}% vs ${currentUpside.toFixed(1)}%)`);
-    }
+  // 10. MACD 데드크로스 — 매도 시그널 (골든크로스는 매수 시그널, 여기선 제외)
+  if (holding.macd === '데드크로스') {
+    reasons.push('MACD 데드크로스');
   }
 
   return { should: reasons.length > 0, reasons };
@@ -203,7 +201,13 @@ ${watchlistText || '스캔 데이터 없음'}
 
 ${context || ''}
 
-위 데이터만을 근거로 분석하세요. 데이터가 없는 항목은 판단불가로 처리하세요.
+[분석 원칙 — 반드시 준수]
+- 데이터 없는 항목은 "판단불가"로 처리. 추측 금지.
+- 긍정적으로 포장하지 말 것. 불확실하면 현금 보유가 정답.
+- 매수 추천은 아래 조건을 모두 충족할 때만: 외국인 또는 기관 순매수 확인 + RSI 40~65 + 상승 추세 + 뚜렷한 상승 근거 존재
+- 조건 하나라도 불확실하면 매수 추천 금지. "현금 보유"로 판단.
+- 목표가는 반드시 근거(52주 고가/저항선/업종 PER) 기반으로 설정. 근거 없으면 설정 금지.
+- 손절가는 매수가 기준 -5% 이내로 반드시 설정.
 부분매도 절대 금지. 모든 매도는 전량매도만 추천.
 
 [DART 공시 판단 기준]
@@ -414,6 +418,20 @@ async function runAnalysisPipeline(portfolioSummary) {
       await sendUrgentAlert(holdings[0], a, result.relevantNews || []);
     }
 
+    // 보유 종목에 목표가/손절가 자동 저장
+    if (holdings.length > 0 && (a.target_price || a.stop_loss)) {
+      const today2 = getTodayKST();
+      for (const h of holdings) {
+        if (h.stock_code) {
+          db.prepare('UPDATE holdings SET target_price = ?, stop_loss = ? WHERE stock_code = ? AND date = ?')
+            .run(a.target_price || null, a.stop_loss || null, h.stock_code, today2);
+        } else {
+          db.prepare('UPDATE holdings SET target_price = ?, stop_loss = ? WHERE stock_name = ? AND date = ?')
+            .run(a.target_price || null, a.stop_loss || null, h.stock_name, today2);
+        }
+      }
+    }
+
     // DB 저장 (new 컬럼 포함)
     db.prepare(
       `INSERT INTO analysis (date, stock_name, action, confidence, reason, data_used, news_impact, why_sell_now, why_hold, why_switch, why_cash, alternative_stock, target_price, stop_loss, urgency, cash_recommendation)
@@ -431,9 +449,121 @@ async function runAnalysisPipeline(portfolioSummary) {
   }
 }
 
+// 현금만 있을 때 장 중 watchlist 기반 진입 탐색
+// Sonnet 호출 조건: watchlist 상위 종목 중 외국인+기관 동시 매수 + RSI 40~65 + 골든크로스
+async function runCashMonitor(portfolioSummary) {
+  const { getDb } = require('../db/database');
+  const { fetchAllRSS } = require('./rss');
+  const { sendKakao } = require('./kakao');
+  const { getSonnetRemainingToday } = require('./claude-sonnet');
+  const { isOneHourBeforeClose, isFridayAfternoon } = require('./portfolio');
+
+  if (getSonnetRemainingToday() <= 0) return;
+  if (isOneHourBeforeClose() || isFridayAfternoon()) {
+    console.log('[CashMonitor] 장 마감 임박 or 금요일 오후 — 신규 진입 자제');
+    return;
+  }
+
+  const db = getDb();
+  const today = getTodayKST();
+  const availCash = (portfolioSummary.cash || 0) + (portfolioSummary.newInvestment || 0);
+
+  // watchlist에서 조건 충족 종목 필터 (냉정 기준)
+  const watchlist = db.prepare('SELECT * FROM watchlist WHERE date = ? ORDER BY rowid').all(today);
+  if (watchlist.length === 0) {
+    console.log('[CashMonitor] watchlist 없음 - 스킵');
+    return;
+  }
+
+  // 조건: RSI 40~65 + 외국인 또는 기관 순매수 + MACD 골든크로스 or 상승
+  const qualified = watchlist.filter(w =>
+    w.rsi >= 40 && w.rsi <= 65 &&
+    (w.foreign_net > 0 || w.institution_net > 0) &&
+    (w.macd === '골든크로스' || w.macd === '상승중')
+  );
+
+  if (qualified.length === 0) {
+    console.log('[CashMonitor] 조건 충족 종목 없음 (RSI 40~65 + 수급 매수 + MACD 상승) — 현금 보유 유지');
+    return;
+  }
+
+  console.log(`[CashMonitor] 조건 충족 ${qualified.length}종목 → Sonnet 분석 호출`);
+
+  // 뉴스 수집
+  let allNews = [];
+  try {
+    allNews = await fetchAllRSS();
+  } catch (e) { /* silent */ }
+
+  const haikuResults = await filterNewsBatch(allNews.slice(0, 20), [], qualified.map(w => w.stock_name));
+  const relevantNews = haikuResults.filter(n => n.relevant === true);
+  const candidateStocks = qualified.map(w => w.stock_name);
+
+  const assets = {
+    stockValue: 0,
+    cash: portfolioSummary.cash || 0,
+    newInvestment: portfolioSummary.newInvestment || 0,
+    total: availCash
+  };
+
+  const SERVER_URL = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
+  const now = new Date();
+  const minutesLeft = require('./portfolio').getMinutesUntilClose();
+
+  const prompt = `분석 요청 시각: ${now.toLocaleString('ko-KR')}
+장 마감까지: ${minutesLeft}분
+현재 보유 종목: 없음 (전량 현금 보유 중)
+
+=== 총 자산 현황 ===
+현금: ${availCash.toLocaleString()}원
+투자 가능 현금: ${availCash.toLocaleString()}원
+
+=== watchlist 조건 충족 종목 (외국인/기관 매수 + RSI 40~65 + MACD 상승) ===
+${qualified.slice(0, 5).map(w => {
+  const buyableQty = w.current_price ? Math.floor(availCash / w.current_price) : null;
+  return `${w.stock_name}(${w.stock_code}): 현재가 ${w.current_price?.toLocaleString() ?? '-'}원, RSI ${Math.round(w.rsi ?? 0)}, MACD ${w.macd}, 거래량배수 ${w.volume_ratio ?? '-'}, 외인 ${w.foreign_net > 0 ? '+' : ''}${w.foreign_net?.toLocaleString() ?? 0}주, 기관 ${w.institution_net > 0 ? '+' : ''}${w.institution_net?.toLocaleString() ?? 0}주${buyableQty !== null ? `, 최대 ${buyableQty}주 매수 가능` : ''}`;
+}).join('\n')}
+
+=== 관련 뉴스 ===
+${relevantNews.length > 0 ? relevantNews.slice(0, 3).map(n => `[${n.impact}] ${n.title}`).join('\n') : '관련 뉴스 없음'}
+
+[분석 원칙 — 반드시 준수]
+- 현금을 지키는 것이 최우선. 손실 가능성이 조금이라도 있으면 매수 금지.
+- 매수 추천 조건: 외국인+기관 동시 순매수 확인 + RSI 40~65 + 상승 추세 명확 + 장 마감 1시간 이상 남음 + 뚜렷한 상승 근거
+- 위 조건 중 하나라도 불확실하면 action을 반드시 hold_cash로 설정.
+- 매수 추천 시 진입가, 목표가(근거 명시), 손절가(진입가 -5% 이내), 최대 매수 주수 반드시 포함.
+- 과장 금지. 데이터 없는 항목 추측 금지.
+
+위 종목 중 지금 당장 매수해도 되는 종목이 있으면 buy_new로, 없으면 hold_cash로 판단하라.
+👉 ${SERVER_URL}`;
+
+  const result = await callSonnet(prompt);
+  if (!result) return;
+
+  if (result.action === 'buy_new' && result.switch_stock?.name) {
+    const sw = result.switch_stock;
+    const buyableQty = sw.entry_price ? Math.floor(availCash / sw.entry_price) : null;
+    let msg = `💰 [신규진입 추천] ${sw.name}\n\n`;
+    msg += `현금: ${availCash.toLocaleString()}원\n`;
+    if (sw.entry_price) msg += `진입가: ${sw.entry_price.toLocaleString()}원`;
+    if (buyableQty) msg += ` → 최대 ${buyableQty}주\n`;
+    else msg += '\n';
+    if (sw.target_price) msg += `🎯 목표가: ${sw.target_price.toLocaleString()}원\n`;
+    if (sw.stop_loss) msg += `🛡 손절가: ${sw.stop_loss.toLocaleString()}원\n`;
+    if (sw.reason) msg += `\n이유: ${sw.reason.slice(0, 150)}\n`;
+    if (result.key_risk) msg += `⚠️ 리스크: ${result.key_risk.slice(0, 100)}\n`;
+    msg += `\n👉 ${SERVER_URL}`;
+    if (msg.length > 4000) msg = msg.slice(0, 3990) + '…\n\n👉 ' + SERVER_URL;
+    await sendKakao(msg, sw.name, 'cash_monitor_buy');
+  } else {
+    console.log('[CashMonitor] Sonnet 판단: 현금 보유 유지 —', result.reason?.slice(0, 80));
+  }
+}
+
 module.exports = {
   analyzePortfolio,
   runAnalysisPipeline,
+  runCashMonitor,
   runMorningReport,
   runClosingReport,
   runFridayCheck,

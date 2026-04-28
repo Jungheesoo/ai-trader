@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS holdings (
   current_price REAL,
   profit_loss REAL,
   profit_loss_rate REAL,
+  target_price REAL,
+  stop_loss REAL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

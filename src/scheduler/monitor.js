@@ -1,8 +1,9 @@
 const { getDb } = require('../db/database');
-const { runAnalysisPipeline } = require('../services/analyzer');
+const { runAnalysisPipeline, runCashMonitor } = require('../services/analyzer');
 const { isWeekday, isTradingHours } = require('../services/holiday');
 const { sendErrorAlert } = require('../services/alert');
 const { getPortfolioSummary } = require('../services/portfolio');
+const { getTodayKST } = require('../services/dateutil');
 
 let isRunning = false;
 
@@ -22,7 +23,14 @@ async function runMonitor() {
     const portfolio = await getPortfolioSummary();
 
     if (!portfolio.holdings || portfolio.holdings.length === 0) {
-      console.log('[Monitor] 보유 종목 없음 - 스킵');
+      // 현금만 있을 때 — watchlist 기반 신규 진입 기회 탐색
+      const availCash = (portfolio.cash || 0) + (portfolio.newInvestment || 0);
+      if (availCash > 0) {
+        console.log(`[Monitor] 보유 종목 없음. 현금 ${availCash.toLocaleString()}원 — watchlist 스캔 진행`);
+        await runCashMonitor(portfolio);
+      } else {
+        console.log('[Monitor] 보유 종목 없음, 현금 없음 - 스킵');
+      }
       return;
     }
 
