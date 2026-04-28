@@ -241,8 +241,7 @@ async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, co
     return { triggered: false, relevantNews: [], dartDisclosures };
   }
   if (!firstH.rsi) {
-    console.log('[Sonnet] RSI 없음 → 호출 스킵');
-    return { triggered: false, relevantNews: [], dartDisclosures };
+    console.warn('[Sonnet] RSI 없음 — KIS 데이터 불완전. 뉴스/DART 기반으로만 분석 진행');
   }
   // Haiku 비용 제어: 장 중 최대 30건, 긴급 공시 있으면 우선 처리
   const MAX_HAIKU_NEWS = 30;
