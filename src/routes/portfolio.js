@@ -164,12 +164,15 @@ router.post('/trades', (req, res) => {
 
     // holdings 처리
     if (['sell_profit', 'sell_loss', 'switch'].includes(trade_type)) {
-      // 매도: holdings 제거
-      db.prepare('DELETE FROM holdings WHERE stock_code = ? AND date = ?').run(resolvedCode, today);
-      // 전일 데이터도 정리 (종목코드 기준)
+      // 매도: 오늘 + 전일 holdings 제거 (코드 또는 이름 기준)
       if (resolvedCode) {
+        db.prepare('DELETE FROM holdings WHERE stock_code = ? AND date = ?').run(resolvedCode, today);
         const lastDate = db.prepare('SELECT MAX(date) as d FROM holdings WHERE stock_code = ?').get(resolvedCode);
-        if (lastDate?.d) db.prepare('DELETE FROM holdings WHERE stock_code = ? AND date = ?').run(resolvedCode, lastDate.d);
+        if (lastDate?.d && lastDate.d !== today) db.prepare('DELETE FROM holdings WHERE stock_code = ? AND date = ?').run(resolvedCode, lastDate.d);
+      } else {
+        db.prepare('DELETE FROM holdings WHERE stock_name = ? AND date = ?').run(resolvedName, today);
+        const lastDate = db.prepare('SELECT MAX(date) as d FROM holdings WHERE stock_name = ?').get(resolvedName);
+        if (lastDate?.d && lastDate.d !== today) db.prepare('DELETE FROM holdings WHERE stock_name = ? AND date = ?').run(resolvedName, lastDate.d);
       }
     } else if (trade_type === 'buy') {
       // 신규 매수: holdings 추가

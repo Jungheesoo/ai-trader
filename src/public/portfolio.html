@@ -210,8 +210,6 @@ async function loadExisting() {
     const json = await res.json();
     if (json.ok && json.data.length > 0) {
       json.data.forEach(h => addHolding(h));
-    } else {
-      addHolding({ stock_name: '두산에너빌리티', quantity: 11, avg_price: 116418 });
     }
     const res2 = await fetch('/api/portfolio');
     const json2 = await res2.json();
@@ -220,7 +218,7 @@ async function loadExisting() {
       if (json2.data.newInvestment) document.getElementById('new-invest-input').value = Number(json2.data.newInvestment).toLocaleString();
     }
   } catch(e) {
-    addHolding({ stock_name: '두산에너빌리티', quantity: 11, avg_price: 116418 });
+    // 기본값 없음
   }
 }
 loadExisting();
