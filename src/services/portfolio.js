@@ -1,5 +1,5 @@
 const { getDb } = require('../db/database');
-const { getFullStockData } = require('./kis');
+const { getFullStockData, isKisDown } = require('./kis');
 const { getNaverFinancePrice } = require('./naver');
 const { getTodayKST } = require('./dateutil');
 const { getMarketStatus } = require('../utils/market');
@@ -59,9 +59,11 @@ async function enrichHoldingsWithPrices(holdings) {
     if (h.stock_code) {
       if (shouldCallKIS) {
         // 정규장 + 프리마켓 + 애프터마켓: KIS 호출
-        stockData = await getFullStockData(h.stock_code);
+        if (!isKisDown()) {
+          stockData = await getFullStockData(h.stock_code);
+        }
         if (!stockData) {
-          console.warn(`[Portfolio] KIS 실패(${h.stock_code}) → 네이버 백업`);
+          if (!isKisDown()) console.warn(`[Portfolio] KIS 실패(${h.stock_code}) → 네이버 백업`);
           const backup = await getNaverFinancePrice(h.stock_code);
           if (backup) {
             stockData = { price: backup.price, source: 'naver_backup', delayed: true };

@@ -431,6 +431,10 @@ async function getFullStockData(stockCode) {
   };
 }
 
+function isKisDown() {
+  return kisRecoveryAt !== null && Date.now() < kisRecoveryAt;
+}
+
 module.exports = {
   getCurrentPrice,
   getDailyChart,
@@ -440,5 +444,6 @@ module.exports = {
   calculateMACD,
   calculateBollingerBands,
   calculateVolumeRatio,
-  calculateTrailingStop
+  calculateTrailingStop,
+  isKisDown
 };
