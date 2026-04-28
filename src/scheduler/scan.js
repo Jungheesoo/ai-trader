@@ -100,11 +100,6 @@ async function runScan() {
         const chart = await getDailyChart(stock.code, 60).catch(() => null);
         await delay(300);
         const investor = await getInvestorData(stock.code, { scanMode: true }).catch(() => null);
-        const chartData = { status: chart ? 'fulfilled' : 'rejected', value: chart };
-        const investorData = { status: investor ? 'fulfilled' : 'rejected', value: investor };
-
-        const chart = chartData.status === 'fulfilled' ? chartData.value : null;
-        const investor = investorData.status === 'fulfilled' ? investorData.value : null;
 
         if (!chart || chart.length < 20) continue;
 
