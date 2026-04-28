@@ -271,21 +271,34 @@ async function getInvestorData(stockCode, { noRetry = false, scanMode = false } 
       return sum + (isNaN(val) ? 0 : val);
     }, 0);
 
-    // 외인 연속 순매수 일수 (오늘 빈값이면 d[1]부터 계산)
+    // 외인 연속 순매수(양수) or 순매도(음수) 일수
+    // 예: +3 = 3일 연속 매수, -2 = 2일 연속 매도
     const startIdx = (!d[0].frgn_ntby_qty || d[0].frgn_ntby_qty.trim() === '') ? 1 : 0;
     let foreignConsecutiveDays = 0;
-    for (let i = startIdx; i < d.length; i++) {
-      const val = parseInt(d[i].frgn_ntby_qty);
-      if (!isNaN(val) && val > 0) foreignConsecutiveDays++;
-      else break;
+    if (d.length > startIdx) {
+      const firstVal = parseInt(d[startIdx].frgn_ntby_qty);
+      const isBuying = !isNaN(firstVal) && firstVal > 0;
+      for (let i = startIdx; i < d.length; i++) {
+        const val = parseInt(d[i].frgn_ntby_qty);
+        if (isNaN(val)) break;
+        if (isBuying && val > 0) foreignConsecutiveDays++;
+        else if (!isBuying && val < 0) foreignConsecutiveDays--;
+        else break;
+      }
     }
 
-    // 기관 연속 순매수 일수
+    // 기관 연속 순매수(양수) or 순매도(음수) 일수
     let institutionConsecutiveDays = 0;
-    for (let i = 0; i < d.length; i++) {
-      const val = parseInt(d[i].orgn_ntby_qty);
-      if (!isNaN(val) && val > 0) institutionConsecutiveDays++;
-      else break;
+    if (d.length > 0) {
+      const firstVal = parseInt(d[0].orgn_ntby_qty);
+      const isBuying = !isNaN(firstVal) && firstVal > 0;
+      for (let i = 0; i < d.length; i++) {
+        const val = parseInt(d[i].orgn_ntby_qty);
+        if (isNaN(val)) break;
+        if (isBuying && val > 0) institutionConsecutiveDays++;
+        else if (!isBuying && val < 0) institutionConsecutiveDays--;
+        else break;
+      }
     }
 
     return {

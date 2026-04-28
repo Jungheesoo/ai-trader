@@ -159,10 +159,12 @@ function calcOpportunityCost(currentHolding, candidateStock) {
 }
 
 function getMinutesUntilClose() {
-  const now = new Date();
-  const close = new Date();
-  close.setHours(15, 30, 0, 0);
-  return Math.max(0, Math.round((close - now) / 60000));
+  const nowMs = Date.now();
+  const kst = new Date(nowMs + 9 * 60 * 60 * 1000);
+  // KST 15:30 = UTC 06:30 — setUTCHours로 오늘 KST 마감 시각 계산
+  const close = new Date(kst);
+  close.setUTCHours(6, 30, 0, 0);
+  return Math.max(0, Math.round((close - new Date(nowMs)) / 60000));
 }
 
 // 프롬프트 섹션 9-2: 장 마감 1시간 이내 = 오후 2시 30분 이후 신규 진입 자제
