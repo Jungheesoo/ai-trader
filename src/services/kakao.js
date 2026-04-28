@@ -3,7 +3,6 @@ const axios = require('axios');
 const { getDb } = require('../db/database');
 const { getTodayKST } = require('./dateutil');
 
-const MAX_PER_DAY = parseInt(process.env.MAX_KAKAO_ALERTS_PER_DAY) || 15;
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const TG_URL = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
@@ -52,8 +51,8 @@ async function sendRaw(text) {
   }, { timeout: 10000 });
 }
 
-async function sendMessage(message, stockName = '', alertType = 'info') {
-  if (isDuplicate(stockName, alertType)) {
+async function sendMessage(message, stockName = '', alertType = 'info', urgent = false) {
+  if (!urgent && isDuplicate(stockName, alertType)) {
     console.warn('[Telegram] 중복 알림 차단:', alertType);
     return false;
   }
@@ -97,13 +96,14 @@ async function sendMessage(message, stockName = '', alertType = 'info') {
   }
 }
 
-const sendKakao = sendMessage;
+async function sendKakao(message, stockName = '', alertType = 'info', urgent = false) {
+  return sendMessage(message, stockName, alertType, urgent);
+}
 
 module.exports = {
   sendMessage,
   sendKakao,
   getTodayCount,
-  MAX_PER_DAY,
   checkRefreshTokenExpiry,
   setRefreshTokenIssuedAt
 };

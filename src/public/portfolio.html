@@ -173,7 +173,7 @@ async function savePortfolio() {
     });
     const json = await res.json();
     if (!json.ok) throw new Error(json.error);
-    showBanner('success', '✅ 저장 완료! AI 분석이 시작되었습니다. 카카오톡 알림을 확인해주세요.');
+    showBanner('success', '✅ 저장 완료! AI 분석이 시작되었습니다. 텔레그램 알림을 확인해주세요.');
     btn.textContent = '저장 완료 ✓';
     setTimeout(() => { window.location.href = '/'; }, 2000);
   } catch (e) {

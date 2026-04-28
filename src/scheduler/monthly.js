@@ -6,11 +6,10 @@ const { sendErrorAlert } = require('../services/alert');
 
 // 이번 달 마지막 금요일 여부 판단
 function isLastFridayOfMonth() {
-  const now = new Date();
-  if (now.getDay() !== 5) return false;
-  const nextFriday = new Date(now);
-  nextFriday.setDate(now.getDate() + 7);
-  return nextFriday.getMonth() !== now.getMonth();
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  if (kst.getUTCDay() !== 5) return false;
+  const nextFriday = new Date(kst.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return nextFriday.getUTCMonth() !== kst.getUTCMonth();
 }
 
 async function runMonthlyReport() {

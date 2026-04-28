@@ -2,7 +2,7 @@ const { getDb } = require('../db/database');
 const { callSonnet } = require('../services/claude-sonnet');
 const { sendKakao } = require('../services/kakao');
 const { isWeekday } = require('../services/holiday');
-const { getPortfolioSummary } = require('../services/portfolio');
+const { getPortfolioSummary, getMinutesUntilClose } = require('../services/portfolio');
 const { fetchAllRSS } = require('../services/rss');
 const { filterNewsBatch } = require('../services/claude-haiku');
 const { checkNewDisclosures } = require('../services/dart');
@@ -86,8 +86,7 @@ async function runMorningReport() {
 }
 
 function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dartDisclosures = [], sox = null, exRate = null) {
-  const now = new Date();
-  const minutesUntilClose = Math.max(0, Math.floor((new Date(now.toDateString() + ' 15:30:00') - now) / 60000));
+  const minutesUntilClose = getMinutesUntilClose();
   const availableCash = (portfolio.cash || 0) + (portfolio.newInvestment || 0);
 
   return {

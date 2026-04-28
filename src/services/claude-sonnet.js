@@ -54,7 +54,7 @@ const SYSTEM_PROMPT = `당신은 30년 경력 한국 주식 퀀트 트레이더�
 
 [응답 JSON 형식 — 반드시 이 형식만 출력]
 {
-  "action": "보유유지|전량매도|추가매수|갈아타기|현금보유|판단불가",
+  "action": "hold|sell_all|buy_more|switch_stock|buy_new|hold_cash|unknown",
   "confidence": "높음|보통|낮음",
   "reason": "판단 근거 — RSI/MACD/수급/나스닥선물 수치 직접 인용 필수. 수치 없으면 판단불가",
   "current_upside": "현재 종목 예상 추가 수익률 (예: +7%) 또는 null",
@@ -75,7 +75,7 @@ const SYSTEM_PROMPT = `당신은 30년 경력 한국 주식 퀀트 트레이더�
   "why_hold": "보유 근거 수치 포함 또는 null",
   "why_target_price": "목표가 근거 (볼린저상단/52주고가/저항선) 또는 null",
   "why_stop_loss": "손절가 근거 또는 null",
-  "cash_recommendation": "재투자|현금보유|판단불가",
+  "cash_recommendation": "reinvest|hold_cash|unknown",
   "market_outlook": "시장 전망 한 줄 — 나스닥선물 수치 인용",
   "key_risk": "오늘 주요 리스크 한 줄",
   "urgency": "긴급|일반|낮음",

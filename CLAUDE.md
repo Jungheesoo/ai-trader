@@ -24,7 +24,7 @@ src/
   services/
     kis.js          # KIS REST API (현재가, 수급)
     kis-websocket.js # KIS WS 실시간 (H0STCNT0/H0STASP0)
-    kakao.js        # 텔레그램 발송, dedup, 일 15건 제한 (파일명 유지, 내부는 텔레그램)
+    kakao.js        # 텔레그램 발송, dedup (urgent=true 무제한, urgent=false 1시간 dedup)
     claude-haiku.js # 뉴스 필터 (max_tokens 150)
     claude-sonnet.js # 정밀 분석 (timeout 60s)
     analyzer.js     # 모니터링 파이프라인 조율
@@ -109,7 +109,10 @@ db.prepare('INSERT/UPDATE ...').run(params);
 ### 텔레그램 발송
 ```js
 const { sendKakao } = require('../services/kakao'); // 파일명 유지 (하위호환)
-await sendKakao(msg); // 텔레그램 Bot API, 일 15건 dedup 자동 처리
+await sendKakao(msg, stockName, alertType, urgent);
+// urgent=true: dedup 건너뛰고 무조건 발송 (급락·목표가·트레일링·긴급 알림)
+// urgent=false(기본): 동일 stockName+alertType 1시간 내 중복 차단
+// 텔레그램 실제 제한: 분당 30건 (일 제한 없음)
 // .env: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID 필요
 ```
 
@@ -138,10 +141,16 @@ await sendKakao(msg); // 텔레그램 Bot API, 일 15건 dedup 자동 처리
 ### scheduler/monthly.js
 - `isLastFridayOfMonth()` 선행 체크 — 마지막 금요일만 실행
 
+### services/guard.js
+- PM2 재시작 시 `lastSonnetCallTime` DB(`api_calls.last_called_at`) 자동 복원
+- `hourCallCount`는 clock hour 기준 (현재 시간대 DB 집계로 복원). rolling window 미구현
+
 ### services/analyzer.js
 - Sonnet pre-validation: holdings/current_price/RSI 없으면 스킵
 - 뉴스 max 5개, 50자 요약
 - watchlist max 5개
+- `fetchSoxData()`·`fetchExchangeRate()`: Yahoo Finance v8, 15분 지연
+- DART URGENT_BAD 공시 시 `fetchDisclosureBody(rcpNo)` 본문 분석 (dart.js)
 
 ---
 

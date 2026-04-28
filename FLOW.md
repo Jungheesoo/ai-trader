@@ -112,11 +112,10 @@
    ├── watchlist 상위 5종목 (외국인 방향 포함)
    └── 액션 판단: sell_all / buy_more / hold / switch_stock / buy_new / hold_cash / unknown
 
-6단계: 텔레그램 알림 (긴급 신호 시에만)
-   ├── 긴급 매도 신호
-   ├── 목표가 도달
-   ├── 추가매수 기회
-   └── 일 최대 15건 제한
+6단계: 텔레그램 알림
+   ├── 긴급(urgent=true): 급락·목표가·트레일링·DART URGENT_BAD — dedup 없이 무조건 발송
+   ├── 일반(urgent=false): 동일 stockName+alertType 1시간 내 중복 차단
+   └── 텔레그램 실제 제한: 분당 30건 (일 제한 없음)
 ```
 
 ---
@@ -230,9 +229,10 @@ Claude Sonnet (고비용 정밀 분석, ~$1.5~2/월)
 | KIS REST API | 현재가, 수급, 기술지표 | 네이버 금융 자동 전환 |
 | KIS WebSocket | 실시간 체결/호가 (장중) | 30초 후 자동 재연결 |
 | 네이버 뉴스 API | 종목별 뉴스 + 시장 키워드 | 스킵 |
-| DART API | 공시 감지 | 스킵 |
+| DART API | 공시 감지 + URGENT_BAD 본문 분석 (fetchDisclosureBody, 5초 타임아웃) | 스킵 |
 | RSS (다중 URL fallback) | 글로벌/국내 이슈 | 다음 URL 시도 |
 | 네이버 금융 크롤링 | KIS 백업 현재가 | - |
+| Yahoo Finance v8 | SOX(반도체지수)·환율 (15분 지연) | null 반환 |
 
 ---
 
@@ -251,9 +251,9 @@ Claude Sonnet (고비용 정밀 분석, ~$1.5~2/월)
   - 야간 이슈 알림             최대 2건
   소계: 최대 12건
 
-일 최대 합계: 15건 (MAX_KAKAO_ALERTS_PER_DAY env로 조정)
-중복 차단: 동일 종목 + 동일 유형 1시간 이내 재발송 금지
-전송 방식: 텔레그램 Bot API (parse_mode HTML, 토큰 갱신 불필요)
+긴급(urgent=true): 횟수 제한 없음 (급락·목표가·트레일링·DART URGENT_BAD·에러)
+일반(urgent=false): 동일 종목+유형 1시간 내 중복 차단
+전송 방식: 텔레그램 Bot API (parse_mode HTML, 토큰 갱신 불필요, 분당 30건 실제 제한)
 
 주기적:
   - 일요일 10:00 주간 성과 리포트

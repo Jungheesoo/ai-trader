@@ -70,7 +70,7 @@ async function sendUrgentAlert(holding, analysis, relevantNews = []) {
   msg += `근거: ${analysis.reason || '-'}\n\n`;
   msg += `👉 ${SERVER_URL}`;
 
-  return sendMessage(msg, holding.stock_name, `urgent_${action}`);
+  return sendMessage(msg, holding.stock_name, `urgent_${action}`, true);
 }
 
 // API 한도 도달 알림
@@ -82,7 +82,7 @@ async function sendApiLimitAlert() {
 // 시스템 오류 알림
 async function sendErrorAlert(errorMsg) {
   const msg = `🚨 시스템 오류 발생\n${errorMsg.slice(0, 100)}\n\n👉 ${SERVER_URL}`;
-  return sendMessage(msg, '', 'error');
+  return sendMessage(msg, '', 'error', true);
 }
 
 module.exports = {

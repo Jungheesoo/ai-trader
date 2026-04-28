@@ -43,12 +43,16 @@ Google Cloud e2-micro 서버에서 24시간 분석·알림 자동화.
 KIS API로 현재가, 거래량, 외국인/기관 수급 수집.
 KIS 실패 시 → 네이버 금융 자동 전환 (종목별 독립 fallback).
 계산 지표: RSI, MACD, 볼린저밴드, 거래량배수, 트레일링스탑, 외국인 5일 누적 수급, 연속 매수/매도일.
+Yahoo Finance v8: SOX(반도체지수)·환율(USD/KRW) 수집 (15분 지연).
 
 ### 2단계: 뉴스 수집
 - RSS: 한국경제, 매일경제, 연합뉴스, Google News (다중 URL fallback)
 - 네이버 뉴스 API (보유 종목별)
 - DART 공시 체크
 - news_cache 테이블로 중복 URL 차단
+
+### 2-c단계: DART 본문 분석
+URGENT_BAD 공시만 `fetchDisclosureBody(rcpNo)` 호출 → XML 파싱 → 50자 summary → news_cache 캐싱.
 
 ### 3단계: Haiku 필터
 뉴스 제목 + 본문 200자를 입력으로 보유 종목 영향 여부 판단 (max_tokens 150).
@@ -156,7 +160,7 @@ KIS WebSocket(H0STCNT0/H0STASP0)으로 실시간 체결/호가 수신.
 
 ```json
 {
-  "action": "보유유지|전량매도|추가매수|현금보유|판단불가",
+  "action": "hold|sell_all|buy_more|switch_stock|buy_new|hold_cash|unknown",
   "confidence": "높음|보통|낮음",
   "reason": "판단 근거 (수치 직접 인용)",
   "current_upside": "+3%",

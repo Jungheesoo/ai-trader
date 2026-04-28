@@ -373,21 +373,35 @@ function calculateEMA(closes, period) {
 }
 
 function calculateMACD(closes) {
-  // MACD 값 배열 생성 (26일 이후부터)
-  const macdValues = [];
-  for (let i = 26; i <= closes.length; i++) {
-    const e12 = calculateEMA(closes.slice(0, i), 12);
-    const e26 = calculateEMA(closes.slice(0, i), 26);
-    if (e12 !== null && e26 !== null) macdValues.push(e12 - e26);
+  if (closes.length < 27) return null;
+
+  const k12 = 2 / 13, k26 = 2 / 27, k9 = 2 / 10;
+
+  // ema12 초기값: 첫 12개 단순평균
+  let ema12 = closes.slice(0, 12).reduce((a, b) => a + b, 0) / 12;
+  // ema26 초기값: 첫 26개 단순평균
+  let ema26 = closes.slice(0, 26).reduce((a, b) => a + b, 0) / 26;
+
+  // i=12~25: ema12만 갱신
+  for (let i = 12; i < 26; i++) {
+    ema12 = closes[i] * k12 + ema12 * (1 - k12);
   }
-  if (macdValues.length < 10) return null;
 
-  const macdLine = macdValues[macdValues.length - 1];
+  // i=26~끝: ema12·ema26 동시 갱신하며 macdValues 누적
+  const macdValues = [];
+  for (let i = 26; i < closes.length; i++) {
+    ema12 = closes[i] * k12 + ema12 * (1 - k12);
+    ema26 = closes[i] * k26 + ema26 * (1 - k26);
+    macdValues.push(ema12 - ema26);
+  }
+  if (macdValues.length < 9) return null;
 
-  // Signal: 9일 EMA — 전일/오늘 각각 계산해 진짜 크로스 감지
-  const signalToday = calculateEMA(macdValues, 9);
-  const signalPrev = calculateEMA(macdValues.slice(0, -1), 9);
-  if (signalToday === null || signalPrev === null) return null;
+  // signal 초기값: macdValues 첫 9개 단순평균 후 지수평활
+  let signalPrev = macdValues.slice(0, 9).reduce((a, b) => a + b, 0) / 9;
+  for (let i = 9; i < macdValues.length - 1; i++) {
+    signalPrev = macdValues[i] * k9 + signalPrev * (1 - k9);
+  }
+  const signalToday = macdValues[macdValues.length - 1] * k9 + signalPrev * (1 - k9);
 
   const prevMacd = macdValues[macdValues.length - 2];
   const currMacd = macdValues[macdValues.length - 1];
@@ -400,7 +414,7 @@ function calculateMACD(closes) {
   else crossover = '하락중';
 
   return {
-    macdLine: Math.round(macdLine * 100) / 100,
+    macdLine: Math.round(currMacd * 100) / 100,
     signal: Math.round(signalToday * 100) / 100,
     crossover
   };

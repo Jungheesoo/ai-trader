@@ -9,6 +9,29 @@ let lastSonnetCallTime = 0;
 let hourCallCount = 0;
 let currentHour = -1;
 
+// PM2 재시작 후 lastSonnetCallTime·hourCallCount 복원
+try {
+  const _db = require('../db/database').getDb();
+  const _today = require('./dateutil').getTodayKST();
+  const _row = _db.prepare(
+    'SELECT last_called_at, call_count_today FROM api_calls WHERE model = ? AND date = ? ORDER BY id DESC LIMIT 1'
+  ).get('sonnet', _today);
+  if (_row && _row.last_called_at) {
+    lastSonnetCallTime = new Date(_row.last_called_at).getTime();
+  }
+  if (_row && _row.call_count_today > 0) {
+    const _kstHour = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCHours();
+    currentHour = _kstHour;
+    // clock hour 기준 오늘 같은 시간대 호출수 조회
+    const _hourRow = _db.prepare(
+      "SELECT COUNT(*) as cnt FROM api_calls WHERE model = 'sonnet' AND date = ? AND strftime('%H', datetime(last_called_at, '+9 hours')) = ?"
+    ).get(_today, String(_kstHour).padStart(2, '0'));
+    hourCallCount = _hourRow ? _hourRow.cnt : 0;
+  }
+} catch (_e) {
+  // DB 미초기화 시 무시
+}
+
 function getToday() {
   return getTodayKST();
 }
@@ -47,16 +70,10 @@ function incrementCallCount(model) {
 
 function canCallSonnet() {
   const hour = getCurrentHour();
+  // 시간당 제한은 clock hour 기준 (rolling window 미구현 — 14:59~15:00 경계 최대 6회 가능)
   if (hour !== currentHour) {
     currentHour = hour;
     hourCallCount = 0;
-  }
-
-  if (lastSonnetCallTime === 0 && hourCallCount === 0) {
-    const todayCount = getTodayCallCount('sonnet');
-    if (todayCount > 0) {
-      hourCallCount = Math.min(todayCount, SONNET_MAX_PER_HOUR);
-    }
   }
 
   const now = Date.now();

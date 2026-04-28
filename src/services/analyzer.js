@@ -409,7 +409,10 @@ async function runAnalysisPipeline(portfolioSummary) {
   const db = getDb();
   const today = getTodayKST();
   const holdings = portfolioSummary.holdings || [];
-  if (holdings.length === 0) return;
+  if (holdings.length === 0) {
+    await runCashMonitor(portfolioSummary);
+    return;
+  }
 
   // 뉴스 수집 (news_cache로 오늘 이미 수집한 뉴스 URL 중복 방지)
   const cachedUrls = new Set(
@@ -456,7 +459,7 @@ async function runAnalysisPipeline(portfolioSummary) {
       if (d.isUrgent) msg += `\n⚠️ 악재성 공시 — 즉시 확인 필요\n`;
       if (d.isPositive) msg += `\n✅ 호재성 공시 — AI 분석 진행 중\n`;
       msg += `\n📎 ${d.url}\n👉 ${SERVER_URL}`;
-      await sendKakao(msg, d.stockName, `dart_${d.type}`);
+      await sendKakao(msg, d.stockName, `dart_${d.type}`, d.isUrgent ? true : false);
     }
   } catch (e) { console.warn('[Pipeline] DART 체크 실패:', e.message); }
 
@@ -490,7 +493,7 @@ async function runAnalysisPipeline(portfolioSummary) {
       if (!inWatchlist) {
         console.warn(`[Pipeline] switch_stock '${a.switch_stock.name}' watchlist 미포함 → 차단`);
         a.switch_stock = null;
-        if (['switch_stock', 'buy_new', '갈아타기', '추가매수'].includes(a.action)) a.action = '판단불가';
+        if (['switch_stock', 'buy_new', 'buy_more'].includes(a.action)) a.action = 'unknown';
       }
     }
 
@@ -506,7 +509,7 @@ async function runAnalysisPipeline(portfolioSummary) {
       }
     }
 
-    if (a.action && !['보유유지', '판단불가', '현금보유'].includes(a.action)) {
+    if (a.action && !['hold', 'unknown', 'hold_cash'].includes(a.action)) {
       await sendUrgentAlert(holdings[0], a, result.relevantNews || []);
     }
 
@@ -564,6 +567,8 @@ async function runCashMonitor(portfolioSummary) {
   const watchlist = db.prepare('SELECT * FROM watchlist WHERE date = ? ORDER BY rowid').all(today);
   if (watchlist.length === 0) {
     console.log('[CashMonitor] watchlist 없음 - 스킵');
+    const SERVER_URL = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
+    await sendKakao(`💰 현금 보유 확인\n\n현금: ${availCash.toLocaleString()}원\n\n⚠️ 오늘 퀀트 스캔(08:00) 미실행 — watchlist 없음\n08:30 모닝리포트에서 매수 후보 분석 예정\n\n👉 ${SERVER_URL}`, '', 'cash_saved', false);
     return;
   }
 
@@ -647,7 +652,7 @@ ${relevantNews.length > 0 ? relevantNews.slice(0, 3).map(n => `[${n.impact}] ${n
     if (result.key_risk) msg += `⚠️ 리스크: ${result.key_risk.slice(0, 100)}\n`;
     msg += `\n👉 ${SERVER_URL}`;
     if (msg.length > 4000) msg = msg.slice(0, 3990) + '…\n\n👉 ' + SERVER_URL;
-    await sendKakao(msg, sw.name, 'cash_monitor_buy');
+    await sendKakao(msg, sw.name, 'cash_monitor_buy', true);
   } else {
     console.log('[CashMonitor] Sonnet 판단: 현금 보유 유지 —', result.reason?.slice(0, 80));
   }

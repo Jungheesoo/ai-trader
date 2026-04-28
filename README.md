@@ -270,6 +270,9 @@ pm2 restart ai-trader
 pm2 logs ai-trader --lines 100
 ```
 
+**PM2 재시작 후 Sonnet 제한 오작동**
+guard.js가 재시작 시 `api_calls.last_called_at`에서 `lastSonnetCallTime`을 자동 복원합니다. 별도 조치 불필요.
+
 **SQLite DB 오류**
 ```bash
 rm data/ai-trader.db
@@ -555,6 +558,13 @@ pm2 status  # ai-trader: online ✅
 #### 보안
 - [x] .env .gitignore 등록 확인
 - [ ] .env.example에 실제 키 없는지 확인
+
+#### 완료된 기능
+- [x] SOX·환율 연동 (Yahoo Finance v8, 15분 지연)
+- [x] DART 공시 본문 분석 (URGENT_BAD만, fetchDisclosureBody)
+- [x] 모닝·마감리포트 SOX·환율 연동
+- [x] PM2 재시작 후 Sonnet 제한 guard.js DB 자동 복원
+- [x] 텔레그램 urgent=true 긴급 알림 (dedup 없음) / urgent=false 일반 알림
 
 #### 향후 구현 예정
 - [ ] history.html AI 적중률 입력 버튼 (correct/incorrect)

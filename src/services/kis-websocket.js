@@ -231,15 +231,15 @@ async function checkAlerts(holdings) {
 
       // 5분간 -3% 이상 급락
       if (change5min !== null && change5min <= -3) {
-        await sendKakao(`⚠️ [${h.stock_name}] 5분 급락 ${change5min}%!\n현재가: ${latestPrice.toLocaleString()}원\n즉시 확인 필요`);
+        await sendKakao(`⚠️ [${h.stock_name}] 5분 급락 ${change5min}%!\n현재가: ${latestPrice.toLocaleString()}원\n즉시 확인 필요`, h.stock_name, `ws_급락_${code}`, true);
       }
       // 목표가 도달
       if (shortTarget && latestPrice >= shortTarget) {
-        await sendKakao(`🎯 [${h.stock_name}] 목표가 도달!\n현재가: ${latestPrice.toLocaleString()}원 (목표가 ${shortTarget.toLocaleString()}원)\n익절 타이밍`);
+        await sendKakao(`🎯 [${h.stock_name}] 목표가 도달!\n현재가: ${latestPrice.toLocaleString()}원 (목표가 ${shortTarget.toLocaleString()}원)\n익절 타이밍`, h.stock_name, `ws_목표가_${code}`, true);
       }
       // 트레일링 스탑 도달
       if (trailingStop && latestPrice <= trailingStop) {
-        await sendKakao(`⚡ [${h.stock_name}] 트레일링 스탑 도달!\n현재가: ${latestPrice.toLocaleString()}원 (스탑 ${trailingStop.toLocaleString()}원)\n확인 필요`);
+        await sendKakao(`⚡ [${h.stock_name}] 트레일링 스탑 도달!\n현재가: ${latestPrice.toLocaleString()}원 (스탑 ${trailingStop.toLocaleString()}원)\n확인 필요`, h.stock_name, `ws_트레일링_${code}`, true);
       }
     } catch (e) { /* 알림 실패 무시 */ }
   }
