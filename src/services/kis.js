@@ -315,7 +315,7 @@ async function getInvestorData(stockCode, { noRetry = false, scanMode = false } 
     try { return await runner(); } catch (e) { return null; }
   }
   // scanMode: 500 오류 재시도 간격을 3초/5초로 단축 (스캔 전체 시간 절약)
-  if (options?.scanMode) {
+  if (scanMode) {
     for (let i = 0; i < 2; i++) {
       try { return await runner(); } catch (e) {
         if (e.response?.status === 500 && i === 0) { await delay(3000); continue; }
