@@ -462,6 +462,92 @@ async function getFullStockData(stockCode) {
   return result;
 }
 
+// 거래량 순위 상위 종목 조회 (코스피+코스닥)
+async function getVolumeRankStocks(count = 30) {
+  return requestWithRetry(async () => {
+    const token = await getToken();
+    if (!token) throw new Error('토큰 없음');
+    await delay(200);
+    const res = await axios.get(`${BASE_URL}/uapi/domestic-stock/v1/ranking/volume`, {
+      params: {
+        FID_COND_MKT_DIV_CODE: 'J',   // J=코스피+코스닥
+        FID_COND_SCR_DIV_CODE: '20171',
+        FID_INPUT_ISCD: '0000',
+        FID_DIV_CLS_CODE: '0',
+        FID_BLNG_CLS_CODE: '0',
+        FID_TRGT_CLS_CODE: '111111111',
+        FID_TRGT_EXLS_CLS_CODE: '000000',
+        FID_INPUT_PRICE_1: '5000',     // 최소 5000원 이상 (잡주 제외)
+        FID_INPUT_PRICE_2: '',
+        FID_VOL_CNT: '100000',         // 최소 거래량 10만주
+        FID_INPUT_DATE_1: ''
+      },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        appkey: process.env.KIS_APP_KEY,
+        appsecret: process.env.KIS_APP_SECRET,
+        tr_id: 'FHPST01710000',
+        custtype: 'P'
+      },
+      timeout: 15000
+    });
+    const output = res.data.output;
+    if (!output || !output.length) throw new Error('거래량 순위 데이터 없음');
+    return output.slice(0, count).map(d => ({
+      code: d.mksc_shrn_iscd,
+      name: d.hts_kor_isnm,
+      price: parseFloat(d.stck_prpr),
+      changeRate: parseFloat(d.prdy_ctrt),
+      volume: parseInt(d.acml_vol),
+      volumeRatio: parseFloat(d.vol_inrt)  // 거래량 증가율
+    })).filter(d => d.code && d.price > 0);
+  });
+}
+
+// 등락률 상위 종목 조회
+async function getChangeRankStocks(count = 30) {
+  return requestWithRetry(async () => {
+    const token = await getToken();
+    if (!token) throw new Error('토큰 없음');
+    await delay(200);
+    const res = await axios.get(`${BASE_URL}/uapi/domestic-stock/v1/ranking/fluctuation`, {
+      params: {
+        FID_COND_MKT_DIV_CODE: 'J',
+        FID_COND_SCR_DIV_CODE: '20170',
+        FID_INPUT_ISCD: '0000',
+        FID_DIV_CLS_CODE: '0',
+        FID_BLNG_CLS_CODE: '0',
+        FID_TRGT_CLS_CODE: '111111111',
+        FID_TRGT_EXLS_CLS_CODE: '000000',
+        FID_INPUT_PRICE_1: '5000',
+        FID_INPUT_PRICE_2: '',
+        FID_RST_DIV_CODE: '1',         // 1=상승률 순
+        FID_INPUT_ISCD_2: '',
+        FID_ETC_CLS_CODE: '',
+        FID_VOL_CNT: '100000',
+        FID_INPUT_DATE_1: ''
+      },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        appkey: process.env.KIS_APP_KEY,
+        appsecret: process.env.KIS_APP_SECRET,
+        tr_id: 'FHPST01720000',
+        custtype: 'P'
+      },
+      timeout: 15000
+    });
+    const output = res.data.output;
+    if (!output || !output.length) throw new Error('등락률 순위 데이터 없음');
+    return output.slice(0, count).map(d => ({
+      code: d.mksc_shrn_iscd,
+      name: d.hts_kor_isnm,
+      price: parseFloat(d.stck_prpr),
+      changeRate: parseFloat(d.prdy_ctrt),
+      volume: parseInt(d.acml_vol)
+    })).filter(d => d.code && d.price > 0);
+  });
+}
+
 function isKisDown() {
   return kisRecoveryAt !== null && Date.now() < kisRecoveryAt;
 }
@@ -476,5 +562,7 @@ module.exports = {
   calculateBollingerBands,
   calculateVolumeRatio,
   calculateTrailingStop,
-  isKisDown
+  isKisDown,
+  getVolumeRankStocks,
+  getChangeRankStocks
 };
