@@ -146,10 +146,13 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dart
       is_friday: isFriday,
       is_monday: isMonday,
       minutes_until_close: minutesUntilClose,
-      report_type: portfolio.holdings.length === 0 ? 'morning_cash_only' : 'morning',
-      instruction: portfolio.holdings.length === 0
-        ? `현재 보유 종목 없음. 투자 가능 현금 ${((portfolio.cash || 0) + (portfolio.newInvestment || 0)).toLocaleString()}원으로 watchlist에서 신규 매수할 종목 1개를 추천하라. 추천 시 현재가 기준 몇 주 매수 가능한지 반드시 명시할 것. action은 buy_new로 설정.`
-        : '보유 종목 분석 및 오늘 전략을 제시하라.'
+      report_type: 'morning',
+      instruction: `투자 가능 현금 ${((portfolio.cash || 0) + (portfolio.newInvestment || 0)).toLocaleString()}원을 기준으로 아래 모든 시나리오를 비교해 가장 수익률이 높은 전략 하나를 선택하라.
+[시나리오]
+1. 보유 종목 있으면: 계속 보유 vs 전량 매도 후 watchlist 갈아타기 vs 현금 추가 매수
+2. 현금만 있으면: watchlist에서 신규 매수 1종목 vs 현금 보유 대기
+3. 보유 + 현금: 현금으로 추가 매수 vs 갈아타기 vs 그대로
+어떤 시나리오든 매수 추천 시 현재가 기준 몇 주 매수 가능한지 반드시 명시할 것.`
     }
   };
 }
@@ -168,31 +171,6 @@ function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relev
   msg += `총 운용: ${(portfolio.totalAssets || 0).toLocaleString()}원\n`;
   msg += `평가손익: ${pnlSign}${Math.round(pnl).toLocaleString()}원 (${profitSign}${(portfolio.overallProfitRate || 0).toFixed(1)}%)\n`;
   msg += `보유주식: ${(portfolio.stockValue || 0).toLocaleString()}원 / 현금: ${(portfolio.cash || 0).toLocaleString()}원\n\n`;
-
-  // 현금만 있을 때 신규 매수 추천
-  if (!portfolio.holdings || portfolio.holdings.length === 0) {
-    const availCash = (portfolio.cash || 0) + (portfolio.newInvestment || 0);
-    msg += `━━━━━━━━━━━━━━\n💰 신규 매수 추천\n━━━━━━━━━━━━━━\n`;
-    msg += `투자 가능 현금: ${availCash.toLocaleString()}원\n\n`;
-    if (ai.action === 'buy_new' && ai.switch_stock?.name) {
-      const sw = ai.switch_stock;
-      msg += `추천 종목: ${sw.name}${sw.code ? `(${sw.code})` : ''}\n`;
-      if (sw.entry_price) {
-        const buyableQty = Math.floor(availCash / sw.entry_price);
-        msg += `진입가: ${sw.entry_price.toLocaleString()}원 → 최대 ${buyableQty}주 매수 가능\n`;
-      }
-      if (sw.target_price) msg += `🎯 목표가: ${sw.target_price.toLocaleString()}원\n`;
-      if (sw.stop_loss) msg += `🛡 손절가: ${sw.stop_loss.toLocaleString()}원\n`;
-      if (sw.reason) msg += `이유: ${sw.reason.slice(0, 100)}\n`;
-    } else if (ai.cash_recommendation === '현금보유') {
-      msg += `→ 현금 보유 유지\n`;
-      if (ai.why_cash) msg += `이유: ${ai.why_cash.slice(0, 100)}\n`;
-    } else {
-      msg += `→ ${ai.action || '판단불가'}\n`;
-      if (ai.reason) msg += `이유: ${ai.reason.slice(0, 100)}\n`;
-    }
-    msg += '\n';
-  }
 
   // 보유 종목 AI 판단
   if (portfolio.holdings && portfolio.holdings.length > 0) {
@@ -226,22 +204,29 @@ function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relev
     msg += `근거: ${(ai.reason || '-').slice(0, 120)}\n\n`;
   }
 
-  // 갈아타기 추천
-  msg += `━━━━━━━━━━━━━━\n🔄 갈아타기 추천\n━━━━━━━━━━━━━━\n`;
+  // AI 전략 추천
+  const availCash = (portfolio.cash || 0) + (portfolio.newInvestment || 0);
   const sw = ai.switch_stock;
+  const isBuy = ['buy_new', 'switch_stock', 'buy_more'].includes(ai.action);
+  const sectionTitle = ai.action === 'switch_stock' ? '🔄 갈아타기 추천' : ai.action === 'buy_new' ? '💰 신규 매수 추천' : ai.action === 'buy_more' ? '➕ 추가 매수 추천' : '🔄 AI 전략';
+  msg += `━━━━━━━━━━━━━━\n${sectionTitle}\n━━━━━━━━━━━━━━\n`;
+  msg += `투자 가능 현금: ${availCash.toLocaleString()}원\n`;
   if (sw && sw.name) {
-    msg += `${sw.name}${sw.code ? `(${sw.code})` : ''}\n`;
-    if (sw.entry_price) msg += `진입가: ${sw.entry_price.toLocaleString()}원`;
-    if (sw.target_price) msg += ` / 목표가: ${sw.target_price.toLocaleString()}원`;
-    if (sw.stop_loss) msg += ` / 손절가: ${sw.stop_loss.toLocaleString()}원`;
-    msg += '\n';
-    if (ai.current_upside && sw.expected_upside) {
-      msg += `현재 종목 ${ai.current_upside} vs 대체 ${sw.expected_upside} 예상\n`;
+    msg += `추천 종목: ${sw.name}${sw.code ? `(${sw.code})` : ''}\n`;
+    if (sw.entry_price) {
+      const buyableQty = availCash > 0 ? Math.floor(availCash / sw.entry_price) : 0;
+      msg += `진입가: ${sw.entry_price.toLocaleString()}원 → 최대 ${buyableQty}주 매수 가능\n`;
     }
-    if (sw.reason) msg += `이유: ${sw.reason.slice(0, 80)}\n`;
-  } else {
-    msg += `현재 종목 보유 유지\n`;
-    if (ai.why_hold) msg += `이유: ${ai.why_hold.slice(0, 80)}\n`;
+    if (sw.target_price) msg += `🎯 목표가: ${sw.target_price.toLocaleString()}원\n`;
+    if (sw.stop_loss) msg += `🛡 손절가: ${sw.stop_loss.toLocaleString()}원\n`;
+    if (ai.current_upside && sw.expected_upside) msg += `현재 종목 ${ai.current_upside} vs 대체 ${sw.expected_upside} 예상\n`;
+    if (sw.reason) msg += `이유: ${sw.reason.slice(0, 100)}\n`;
+  } else if (ai.cash_recommendation === '현금보유') {
+    msg += `→ 현금 보유 유지\n`;
+    if (ai.why_cash) msg += `이유: ${ai.why_cash.slice(0, 100)}\n`;
+  } else if (portfolio.holdings?.length > 0) {
+    msg += `→ 현재 종목 보유 유지\n`;
+    if (ai.why_hold) msg += `이유: ${ai.why_hold.slice(0, 100)}\n`;
   }
   msg += '\n';
 

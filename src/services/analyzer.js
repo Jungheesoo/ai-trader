@@ -227,13 +227,18 @@ ${isFridayAfternoon() ? '⚠️ 금요일 오후 14:00 이후 - 신규 진입 �
 ${isFriday && !isFridayAfternoon() ? '오늘 금요일: 오후 2시 이후 신규 진입 자제 예정.' : ''}
 ${isMonday ? '오늘 월요일: 주말 효과 하락 가능. 급락 시 악재 없으면 매수 기회로 판단.' : ''}
 
-재투자 허용 조건 (모두 충족 시에만): 시장 방향성 긍정, 명확한 대체 종목 존재, 장 마감 1시간 이상 남음, 글로벌 악재 없음
-현금 보유 조건 (하나라도 해당 시): 시장 하락 중, 마땅한 대체 종목 없음, 장 마감 1시간 이내, 주말 효과 우려
-
-[매수/갈아타기 권고 시 필수 포함]
 투자 가능 현금: ${(assets.cash + assets.newInvestment).toLocaleString()}원
-→ 매수 추천 종목의 현재가 기준으로 몇 주 매수 가능한지 반드시 명시할 것
-→ 예: "현재가 50,000원 기준 투자가능현금 ${(assets.cash + assets.newInvestment).toLocaleString()}원으로 최대 XX주 매수 가능"`;
+
+[전략 판단 — 아래 모든 시나리오를 비교해 최선 하나를 선택]
+1. 보유 종목 계속 보유
+2. 보유 종목 전량 매도 후 watchlist 갈아타기
+3. 현금으로 watchlist 신규 매수
+4. 현금으로 보유 종목 추가 매수
+5. 전량 현금 보유 대기
+→ 매수 추천 시 현재가 기준 투자가능현금 ${(assets.cash + assets.newInvestment).toLocaleString()}원으로 최대 몇 주 살 수 있는지 반드시 명시
+
+재투자 허용 조건 (모두 충족 시에만): 시장 방향성 긍정, 명확한 대체 종목 존재, 장 마감 1시간 이상 남음, 글로벌 악재 없음
+현금 보유 조건 (하나라도 해당 시): 시장 하락 중, 마땅한 대체 종목 없음, 장 마감 1시간 이내, 주말 효과 우려`;
 }
 
 async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, context = '', dartDisclosures = []) {
