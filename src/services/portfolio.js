@@ -62,10 +62,6 @@ async function enrichHoldingsWithPrices(holdings) {
         stockData = await getFullStockData(h.stock_code);
         if (!stockData) {
           console.warn(`[Portfolio] KIS 실패(${h.stock_code}) → 네이버 백업`);
-          try {
-            const { sendMessage } = require('./kakao');
-            await sendMessage(`[KIS API 장애] ${h.stock_name} 데이터 조회 실패. 네이버 금융으로 전환합니다.`, 'kis_down', 'kis_down');
-          } catch (e) { /* silent */ }
           const backup = await getNaverFinancePrice(h.stock_code);
           if (backup) {
             stockData = { price: backup.price, source: 'naver_backup', delayed: true };

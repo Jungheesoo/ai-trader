@@ -12,6 +12,12 @@ let tokenExpiry = 0;
 let isRefreshing = false;
 let nextRetryAt = 0;
 
+// KIS 500 연속 실패 추적 → 자동 복귀
+let kisFailCount = 0;
+let kisDownSince = null;   // 최초 500 발생 시각
+let kisRecoveryAt = null;  // 30분 후 재시도 허용 시각
+let kisDownAlerted = false; // 장애 알림 1회 제한
+
 function loadTokenFromFile() {
   try {
     if (!fs.existsSync(TOKEN_FILE)) return;
@@ -89,16 +95,50 @@ async function delay(ms) {
 }
 
 async function requestWithRetry(fn, retries = 3) {
+  // 30분 fallback 중이면 KIS 호출 차단 (복귀 시각 도달 시 재시도 허용)
+  if (kisRecoveryAt && Date.now() < kisRecoveryAt) {
+    return null;
+  }
+
   const delays = [5000, 10000, 30000];
   for (let i = 0; i < retries; i++) {
     try {
-      return await fn();
+      const result = await fn();
+      // 성공 시 장애 카운터 초기화 및 복구 알림
+      if (kisDownSince) {
+        console.log('[KIS] API 정상 복구');
+        try {
+          const { sendMessage } = require('./kakao');
+          await sendMessage('✅ KIS API 정상 복구되었습니다. 실시간 데이터 재개.', 'kis_down', 'kis_recovery');
+        } catch (e) { /* silent */ }
+      }
+      kisFailCount = 0;
+      kisDownSince = null;
+      kisRecoveryAt = null;
+      kisDownAlerted = false;
+      return result;
     } catch (err) {
       const status = err.response?.status;
-      // 재시도 무의미한 케이스: 즉시 포기
       if (err.message === '토큰 없음') return null;
       if (status === 500 || status === 403 || status === 401) {
-        console.warn(`[KIS] 서버 오류 ${status} - 재시도 생략`);
+        kisFailCount++;
+        console.warn(`[KIS] 서버 오류 ${status} (누적 ${kisFailCount}회)`);
+        // 3회 연속 실패 시 30분 fallback 모드 진입
+        if (kisFailCount >= 3) {
+          if (!kisDownSince) kisDownSince = Date.now();
+          kisRecoveryAt = Date.now() + 30 * 60 * 1000;
+          if (!kisDownAlerted) {
+            kisDownAlerted = true;
+            console.warn('[KIS] 3회 연속 실패 → 30분 후 자동 재시도');
+            try {
+              const { sendMessage } = require('./kakao');
+              await sendMessage(
+                `⚠️ KIS API 장애 감지 (${status} 3회 연속)\n네이버 금융으로 전환합니다.\n30분 후 자동 복구 시도합니다.`,
+                'kis_down', 'kis_down'
+              );
+            } catch (e) { /* silent */ }
+          }
+        }
         return null;
       }
       console.error(`[KIS] 요청 실패 (${i + 1}/${retries}):`, err.message);
