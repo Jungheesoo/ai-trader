@@ -95,12 +95,16 @@ async function delay(ms) {
 }
 
 async function requestWithRetry(fn, retries = 3) {
-  // 30분 fallback 중이면 KIS 호출 차단 (복귀 시각 도달 시 재시도 허용)
+  // 30분 fallback 중이면 KIS 호출 차단
   if (kisRecoveryAt && Date.now() < kisRecoveryAt) {
     return null;
   }
 
-  const delays = [5000, 10000, 30000];
+  // 500 재시도 간격: 30초 → 60초 → 120초
+  const retryDelays500 = [30000, 60000, 120000];
+  // 일반 오류 재시도 간격: 5초 → 10초 → 30초
+  const retryDelaysGeneral = [5000, 10000, 30000];
+
   for (let i = 0; i < retries; i++) {
     try {
       const result = await fn();
@@ -120,10 +124,19 @@ async function requestWithRetry(fn, retries = 3) {
     } catch (err) {
       const status = err.response?.status;
       if (err.message === '토큰 없음') return null;
-      if (status === 500 || status === 403 || status === 401) {
+      if (status === 401 || status === 403) {
+        console.warn(`[KIS] 인증 오류 ${status} - 재시도 생략`);
+        return null;
+      }
+      if (status === 500) {
         kisFailCount++;
-        console.warn(`[KIS] 서버 오류 ${status} (누적 ${kisFailCount}회)`);
-        // 3회 연속 실패 시 30분 fallback 모드 진입
+        console.warn(`[KIS] 서버 오류 500 (${i + 1}/${retries}회, 누적 ${kisFailCount}회)`);
+        if (i < retries - 1) {
+          console.log(`[KIS] ${retryDelays500[i] / 1000}초 후 재시도...`);
+          await delay(retryDelays500[i]);
+          continue;
+        }
+        // 3회 모두 실패 시 fallback 모드 진입
         if (kisFailCount >= 3) {
           if (!kisDownSince) kisDownSince = Date.now();
           kisRecoveryAt = Date.now() + 30 * 60 * 1000;
@@ -133,7 +146,7 @@ async function requestWithRetry(fn, retries = 3) {
             try {
               const { sendMessage } = require('./kakao');
               await sendMessage(
-                `⚠️ KIS API 장애 감지 (${status} 3회 연속)\n네이버 금융으로 전환합니다.\n30분 후 자동 복구 시도합니다.`,
+                `⚠️ KIS API 장애 감지 (500 3회 연속)\n네이버 금융으로 전환합니다.\n30분 후 자동 복구 시도합니다.`,
                 'kis_down', 'kis_down'
               );
             } catch (e) { /* silent */ }
@@ -142,7 +155,7 @@ async function requestWithRetry(fn, retries = 3) {
         return null;
       }
       console.error(`[KIS] 요청 실패 (${i + 1}/${retries}):`, err.message);
-      if (i < retries - 1) await delay(delays[i]);
+      if (i < retries - 1) await delay(retryDelaysGeneral[i]);
     }
   }
   return null;
