@@ -359,7 +359,7 @@ async function loadDashboard() {
       let aCls = 'hold';
       if ((a.action||'').includes('매도')) aCls = 'sell';
       else if ((a.action||'').includes('매수')) aCls = 'buy';
-      const timeStr = a.created_at ? new Date(a.created_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}) : '';
+      const timeStr = a.created_at ? new Date(a.created_at + 'Z').toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'}) : '';
       aiEl.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <div style="font-size:17px;font-weight:800" class="action-${aCls}">${a.action || '-'}</div>
