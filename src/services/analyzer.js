@@ -6,40 +6,30 @@ const cheerio = require('cheerio');
 const { getTodayKST } = require('./dateutil');
 
 async function fetchUsMarketStatus() {
-  const indices = [
-    { name: 'NASDAQ', code: 'NAS', futuresCode: 'NQF' },
-    { name: 'S&P500', code: 'SPI', futuresCode: 'ESF' },
-    { name: '다우', code: 'DJI', futuresCode: null }
+  // Yahoo Finance v8 API — 크롤링 불필요, 구조적 JSON 응답
+  const symbols = [
+    { name: 'NASDAQ', symbol: '^IXIC' },
+    { name: 'S&P500', symbol: '^GSPC' },
+    { name: '나스닥선물', symbol: 'NQ=F' },
+    { name: 'S&P선물', symbol: 'ES=F' }
   ];
   const results = [];
-  for (const idx of indices) {
-    let changeRate = null;
-    let futures = undefined;
+  for (const idx of symbols) {
     try {
-      const res = await axios.get(`https://finance.naver.com/world/sise.naver?symbol=${idx.code}`, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', Referer: 'https://finance.naver.com' },
+      const res = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(idx.symbol)}`, {
+        params: { interval: '1d', range: '1d' },
+        headers: { 'User-Agent': 'Mozilla/5.0' },
         timeout: 8000
       });
-      const $ = cheerio.load(res.data);
-      const rateText = $('.rate_info .blind').last().text().replace(/[^0-9.+-]/g, '');
-      changeRate = rateText ? parseFloat(rateText) : null;
-    } catch { /* silent */ }
-
-    if (idx.futuresCode) {
-      try {
-        const res = await axios.get(`https://finance.naver.com/world/sise.naver?symbol=${idx.futuresCode}`, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', Referer: 'https://finance.naver.com' },
-          timeout: 8000
-        });
-        const $ = cheerio.load(res.data);
-        const rateText = $('.rate_info .blind').last().text().replace(/[^0-9.+-]/g, '');
-        futures = rateText ? parseFloat(rateText) : null;
-      } catch {
-        futures = null;
-      }
+      const meta = res.data?.chart?.result?.[0]?.meta;
+      if (!meta) { results.push({ name: idx.name, changeRate: null }); continue; }
+      const changeRate = meta.regularMarketPrice && meta.previousClose
+        ? Math.round(((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 10000) / 100
+        : null;
+      results.push({ name: idx.name, changeRate, price: meta.regularMarketPrice ?? null });
+    } catch {
+      results.push({ name: idx.name, changeRate: null });
     }
-
-    results.push({ name: idx.name, changeRate, ...(idx.futuresCode !== null ? { futures } : {}) });
   }
   return results;
 }
@@ -52,7 +42,7 @@ function shouldCallSonnet(holding, news = [], watchlistCandidate = null) {
   if (holding.changeRate !== null && holding.changeRate >= 3) {
     reasons.push(`주가 +${holding.changeRate}% 상승`);
   }
-  if (holding.changeRate !== null && holding.changeRate <= -2) {
+  if (holding.changeRate !== null && holding.changeRate <= -3) {
     reasons.push(`주가 ${holding.changeRate}% 하락 — 손절 검토`);
   }
   // 2. 거래량 2배 이상 + 가격 방향 결합
@@ -414,6 +404,12 @@ async function runAnalysisPipeline(portfolioSummary) {
 
   if (result.triggered && result.analysis) {
     const a = result.analysis;
+
+    // switch_stock.code 유효성 검증 — 6자리 숫자 아니면 null 처리
+    if (a.switch_stock?.code && !/^\d{6}$/.test(a.switch_stock.code)) {
+      console.warn(`[Pipeline] switch_stock.code 무효: ${a.switch_stock.code} → null 처리`);
+      a.switch_stock.code = null;
+    }
 
     if (a.action && a.action !== '보유유지' && a.action !== '판단불가') {
       await sendUrgentAlert(holdings[0], a, result.relevantNews || []);

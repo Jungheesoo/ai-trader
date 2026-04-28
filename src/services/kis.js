@@ -360,30 +360,37 @@ function calculateEMA(closes, period) {
 }
 
 function calculateMACD(closes) {
-  const ema12 = calculateEMA(closes, 12);
-  const ema26 = calculateEMA(closes, 26);
-  if (ema12 === null || ema26 === null) return null;
-  const macdLine = ema12 - ema26;
-
-  // Signal line (9-period EMA of MACD)
+  // MACD 값 배열 생성 (26일 이후부터)
   const macdValues = [];
   for (let i = 26; i <= closes.length; i++) {
     const e12 = calculateEMA(closes.slice(0, i), 12);
     const e26 = calculateEMA(closes.slice(0, i), 26);
-    if (e12 && e26) macdValues.push(e12 - e26);
+    if (e12 !== null && e26 !== null) macdValues.push(e12 - e26);
   }
-  const signal = calculateEMA(macdValues, 9);
+  if (macdValues.length < 10) return null;
+
+  const macdLine = macdValues[macdValues.length - 1];
+
+  // Signal: 9일 EMA — 전일/오늘 각각 계산해 진짜 크로스 감지
+  const signalToday = calculateEMA(macdValues, 9);
+  const signalPrev = calculateEMA(macdValues.slice(0, -1), 9);
+  if (signalToday === null || signalPrev === null) return null;
+
+  const prevMacd = macdValues[macdValues.length - 2];
+  const currMacd = macdValues[macdValues.length - 1];
 
   let crossover = '없음';
-  if (macdValues.length >= 2 && signal !== null) {
-    const prev = macdValues[macdValues.length - 2];
-    const curr = macdValues[macdValues.length - 1];
-    if (prev < signal && curr >= signal) crossover = '골든크로스';
-    else if (prev > signal && curr <= signal) crossover = '데드크로스';
-    else if (curr > 0) crossover = '상승중';
-    else crossover = '하락중';
-  }
-  return { macdLine: Math.round(macdLine * 100) / 100, signal: signal ? Math.round(signal * 100) / 100 : null, crossover };
+  if (prevMacd < signalPrev && currMacd >= signalToday) crossover = '골든크로스';
+  else if (prevMacd > signalPrev && currMacd <= signalToday) crossover = '데드크로스';
+  else if (currMacd > 0 && currMacd > signalToday) crossover = '상승중';
+  else if (currMacd > 0) crossover = '양전환';
+  else crossover = '하락중';
+
+  return {
+    macdLine: Math.round(macdLine * 100) / 100,
+    signal: Math.round(signalToday * 100) / 100,
+    crossover
+  };
 }
 
 function calculateBollingerBands(closes, period = 20, stdDev = 2) {
