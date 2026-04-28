@@ -159,7 +159,8 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dart
 1. 보유 종목 있으면: 계속 보유 vs 전량 매도 후 watchlist 갈아타기 vs 현금 추가 매수
 2. 현금만 있으면: watchlist에서 신규 매수 1종목 vs 현금 보유 대기
 3. 보유 + 현금: 현금으로 추가 매수 vs 갈아타기 vs 그대로
-어떤 시나리오든 매수 추천 시 현재가 기준 몇 주 매수 가능한지 반드시 명시할 것.`
+어떤 시나리오든 매수 추천 시 현재가 기준 몇 주 매수 가능한지 반드시 명시할 것.
+보유 종목이 있으면 target_price(볼린저상단/저항선 근거)·stop_loss(평단가 -5% 이내)·trailing_stop(고점 -3%) 반드시 숫자로 제시. null 금지.`
     }
   };
 }
@@ -208,6 +209,7 @@ function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relev
     if (ai.current_upside) msg += `현재 종목 예상 추가 수익: ${ai.current_upside}\n`;
     if (ai.target_price) msg += `🎯 목표가: ${Math.round(ai.target_price).toLocaleString()}원${ai.why_target_price ? ` — ${ai.why_target_price}` : ''}\n`;
     if (ai.stop_loss) msg += `🛡 손절가: ${Math.round(ai.stop_loss).toLocaleString()}원${ai.why_stop_loss ? ` — ${ai.why_stop_loss}` : ''}\n`;
+    if (ai.trailing_stop) msg += `⚡ 트레일링 스탑: ${Math.round(ai.trailing_stop).toLocaleString()}원\n`;
     msg += `근거: ${(ai.reason || '-').slice(0, 120)}\n\n`;
   }
 
