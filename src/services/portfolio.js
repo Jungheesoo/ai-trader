@@ -168,24 +168,20 @@ function getMinutesUntilClose() {
 // 프롬프트 섹션 9-2: 장 마감 1시간 이내 = 오후 2시 30분 이후 신규 진입 자제
 // 프롬프트 섹션 10: 금요일 오후 2시 이후 신규 진입 자제
 function isAfternoonCutoff() {
-  const now = new Date();
-  const h = now.getHours();
-  const m = now.getMinutes();
-  // 오후 2시(14:00) 이후 = 금요일 신규 진입 자제 기준
-  return h >= 14;
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return kst.getUTCHours() >= 14;
 }
 
 function isOneHourBeforeClose() {
-  const now = new Date();
-  const h = now.getHours();
-  const m = now.getMinutes();
-  // 오후 2시 30분(14:30) 이후 = 장 마감 1시간 이내
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const h = kst.getUTCHours();
+  const m = kst.getUTCMinutes();
   return h > 14 || (h === 14 && m >= 30);
 }
 
 function isFridayAfternoon() {
-  const now = new Date();
-  return now.getDay() === 5 && isAfternoonCutoff();
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return kst.getUTCDay() === 5 && isAfternoonCutoff();
 }
 
 async function getPortfolioSummary() {
@@ -248,9 +244,14 @@ function saveDailySeedGrowth() {
     'SELECT COALESCE(cash, 0) as cash FROM portfolio_input WHERE date = ? ORDER BY id DESC LIMIT 1'
   ).get(today);
 
+  const newInvestmentData = db.prepare(
+    'SELECT COALESCE(new_investment, 0) as new_investment FROM portfolio_input WHERE date = ? ORDER BY id DESC LIMIT 1'
+  ).get(today);
+
   const stockValue = holdingsRow?.stockValue || 0;
   const cash = cashData?.cash || 0;
-  const totalAssets = stockValue + cash;
+  const newInvestment = newInvestmentData?.new_investment || 0;
+  const totalAssets = stockValue + cash + newInvestment;
   const realizedPL = realizedResult?.total || 0;
 
   const yesterday = db.prepare(
@@ -275,7 +276,7 @@ function saveDailySeedGrowth() {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(today, totalAssets, stockValue, cash, dailyPL, Math.round(dailyPLRate * 100) / 100, realizedPL, sellCount, cashHoldCount);
 
-  console.log(`[SeedGrowth] 저장 완료: ${totalAssets.toLocaleString()}원 (실현손익: ${realizedPL.toLocaleString()}원)`);
+  console.log(`[SeedGrowth] 저장 완료: ${totalAssets.toLocaleString()}원 (주식 ${stockValue.toLocaleString()}원 + 현금 ${cash.toLocaleString()}원 + 신규 ${newInvestment.toLocaleString()}원, 실현손익: ${realizedPL.toLocaleString()}원)`);
 }
 
 module.exports = {
