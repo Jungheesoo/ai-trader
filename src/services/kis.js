@@ -351,6 +351,8 @@ async function getFullStockData(stockCode) {
   if (!priceData || !chartData || chartData.length < 20) return null;
 
   const closes = chartData.map(d => d.close);
+  const highs = chartData.map(d => d.high);
+  const lows = chartData.map(d => d.low);
   const volumes = chartData.map(d => d.volume);
 
   const rsi = calculateRSI(closes);
@@ -359,6 +361,17 @@ async function getFullStockData(stockCode) {
   const volumeRatio = calculateVolumeRatio(volumes);
   const trailingStop = calculateTrailingStop(closes, priceData.price);
 
+  // 52주 신고가/신저가 (최대 60일치 데이터 기준)
+  const week52High = Math.max(...highs);
+  const week52Low = Math.min(...lows);
+  const isNear52High = priceData.price >= week52High * 0.97;
+  const isNear52Low = priceData.price <= week52Low * 1.03;
+
+  // 외국인 순매수 금액 환산
+  const foreignNetAmount = investorData?.foreignNet != null
+    ? Math.round(investorData.foreignNet * priceData.price)
+    : null;
+
   return {
     ...priceData,
     rsi,
@@ -366,7 +379,14 @@ async function getFullStockData(stockCode) {
     bollingerBands: bb,
     volumeRatio,
     trailingStop,
-    investor: investorData,
+    week52High,
+    week52Low,
+    isNear52High,
+    isNear52Low,
+    investor: {
+      ...investorData,
+      foreignNetAmount
+    },
     chartData: chartData.slice(-5)
   };
 }

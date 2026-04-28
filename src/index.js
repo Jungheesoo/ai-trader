@@ -107,6 +107,40 @@ cron.schedule('30 16 * * 5', async () => {
   await runMonthlyReport();
 }, { timezone: 'Asia/Seoul' });
 
+// 매일 새벽 3:00 - DB/로그 자동 정리 (디스크 보호)
+cron.schedule('0 3 * * *', async () => {
+  try {
+    const { getDb } = require('./db/database');
+    const db = getDb();
+    const cutoff90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const cutoff30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const newsDeleted = db.prepare('DELETE FROM news_cache WHERE date < ?').run(cutoff30).changes;
+    const alertsDeleted = db.prepare('DELETE FROM alerts WHERE date < ?').run(cutoff30).changes;
+    const analysisDeleted = db.prepare('DELETE FROM analysis WHERE date < ?').run(cutoff90).changes;
+    const holdingsDeleted = db.prepare('DELETE FROM holdings WHERE date < ?').run(cutoff90).changes;
+    const watchlistDeleted = db.prepare('DELETE FROM watchlist WHERE date < ?').run(cutoff30).changes;
+    db.prepare('VACUUM').run();
+
+    const { execSync } = require('child_process');
+    try { execSync('pm2 flush', { timeout: 10000 }); } catch (e) { /* silent */ }
+
+    const { sendKakao } = require('./services/kakao');
+    const { statSync } = require('fs');
+    const dbPath = require('path').resolve(__dirname, '../data/trading.db');
+    let dbSize = '-';
+    try { dbSize = Math.round(statSync(dbPath).size / 1024 / 1024) + 'MB'; } catch (e) { /* silent */ }
+
+    await sendKakao(
+      `[자동정리] DB 정리 완료\n뉴스 ${newsDeleted}건 / 알림 ${alertsDeleted}건 / 분석 ${analysisDeleted}건 / 보유 ${holdingsDeleted}건 / 워치리스트 ${watchlistDeleted}건 삭제\nDB 크기: ${dbSize}`,
+      '', 'cleanup'
+    );
+    console.log(`[Cleanup] DB 정리 완료. DB: ${dbSize}`);
+  } catch (err) {
+    console.error('[Cleanup] 정리 실패:', err.message);
+  }
+}, { timezone: 'Asia/Seoul' });
+
 // WebSocket: 장 시작(9:00)에 연결
 cron.schedule('0 9 * * 1-5', async () => {
   try {

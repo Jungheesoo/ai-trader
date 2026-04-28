@@ -119,18 +119,26 @@ function buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, co
       ? (h.investorIsToday ? '(오늘)' : `(전일 ${h.investorDataDate})`)
       : '';
 
+    const foreignNetAmountStr = h.foreignNetAmount != null
+      ? ` (${h.foreignNetAmount >= 0 ? '+' : ''}${Math.round(h.foreignNetAmount / 100000000 * 10) / 10}억원)`
+      : '';
+    const week52Str = h.week52High
+      ? `52주고가 ${h.week52High.toLocaleString()}원${h.isNear52High ? ' ⚠️신고가근접' : ''} / 52주저가 ${h.week52Low?.toLocaleString() ?? '-'}원${h.isNear52Low ? ' ⚠️신저가근접' : ''}`
+      : '데이터없음';
+
     return `
 종목: ${h.stock_name} (${h.stock_code || '-'})
 보유수량: ${h.quantity}주 / 평단가: ${h.avg_price.toLocaleString()}원
 현재가: ${h.current_price.toLocaleString()}원 / 수익률: ${h.profit_loss_rate}% (${h.profit_loss >= 0 ? '+' : ''}${h.profit_loss.toLocaleString()}원)
 RSI: ${h.rsi ?? '데이터없음'} / MACD: ${h.macd ?? '데이터없음'} / 거래량배수: ${h.volumeRatio ?? '데이터없음'}
 볼린저밴드: ${bbText}
-외국인순매수: ${h.foreignNet !== null ? h.foreignNet.toLocaleString() + '주' : '데이터없음'} ${investorDateNote}
+52주: ${week52Str}
+외국인순매수: ${h.foreignNet !== null ? h.foreignNet.toLocaleString() + '주' + foreignNetAmountStr : '데이터없음'} ${investorDateNote}
 외인5일합산: ${h.foreignNet5Days !== null ? h.foreignNet5Days.toLocaleString() + '주' : '데이터없음'}
 외인연속순매수: ${h.foreignConsecutiveDays !== null ? h.foreignConsecutiveDays + '일' : '데이터없음'}
 기관순매수: ${h.institutionNet !== null ? h.institutionNet.toLocaleString() + '주' : '데이터없음'} ${investorDateNote}
 기관연속순매수: ${h.institutionConsecutiveDays !== null ? h.institutionConsecutiveDays + '일' : '데이터없음'}
-트레일링스탑: ${h.trailingStop?.toLocaleString() ?? '데이터없음'}원
+트레일링스탑(DB고가기준): ${h.trailingStop?.toLocaleString() ?? '데이터없음'}원
 단기목표가(시스템계산+5%): ${shortTarget?.toLocaleString() ?? '데이터없음'}원
 손절가(시스템계산-5%): ${stopLoss?.toLocaleString() ?? '데이터없음'}원`;
   }).join('\n---');

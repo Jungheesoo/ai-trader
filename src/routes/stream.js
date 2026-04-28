@@ -2,10 +2,9 @@
 const express = require('express');
 const router = express.Router();
 
-// SSE 클라이언트 목록 (res 객체 보관)
+const MAX_CLIENTS = 50;
 const clients = new Set();
 
-// kis-websocket.js 에서 호출: 체결 tick 수신 시 모든 클라이언트에 broadcast
 function broadcast(stockCode, price, changeRate) {
   if (clients.size === 0) return;
   const data = JSON.stringify({ code: stockCode, price, changeRate, ts: Date.now() });
@@ -14,8 +13,12 @@ function broadcast(stockCode, price, changeRate) {
   }
 }
 
-// GET /api/stream  — 브라우저가 연결 유지
 router.get('/', (req, res) => {
+  if (clients.size >= MAX_CLIENTS) {
+    res.status(503).end();
+    return;
+  }
+
   res.set({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -27,7 +30,6 @@ router.get('/', (req, res) => {
 
   clients.add(res);
 
-  // 연결 유지용 heartbeat (30초마다)
   const hb = setInterval(() => {
     try { res.write(': ping\n\n'); } catch (e) { clearInterval(hb); clients.delete(res); }
   }, 30000);
