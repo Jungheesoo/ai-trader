@@ -3,6 +3,7 @@ const { getFullStockData, isKisDown } = require('./kis');
 const { getNaverFinancePrice } = require('./naver');
 const { getTodayKST } = require('./dateutil');
 const { getMarketStatus } = require('../utils/market');
+const { getBuyWall, getSellWall } = require('./kis-websocket');
 
 
 function getToday() {
@@ -124,7 +125,9 @@ async function enrichHoldingsWithPrices(holdings) {
       investorIsToday: stockData?.investor?.isToday ?? null,
       changeRate: stockData?.changeRate || null,
       isBackup: stockData?.source === 'naver_backup',
-      isDelayed: stockData?.delayed || false
+      isDelayed: stockData?.delayed || false,
+      buyWall: h.stock_code ? (getBuyWall(h.stock_code) ?? null) : null,
+      sellWall: h.stock_code ? (getSellWall(h.stock_code) ?? null) : null
     });
   }
   return enriched;

@@ -156,7 +156,11 @@ async function checkNewDisclosures(holdings) {
       if (isNewDisclosure(d.rcp_no)) {
         const classified = classifyDisclosure(d);
         markDisclosureSeen(d.rcp_no, d.report_nm);
-        newItems.push({ stockName: holding.stock_name, ...classified });
+        let summary = null;
+        if (classified.isUrgent) {
+          summary = await fetchDisclosureBody(d.rcp_no);
+        }
+        newItems.push({ stockName: holding.stock_name, ...classified, summary });
       }
     }
     await new Promise(r => setTimeout(r, 200));
@@ -164,9 +168,55 @@ async function checkNewDisclosures(holdings) {
   return newItems;
 }
 
+async function fetchDisclosureBody(rcpNo) {
+  if (!API_KEY || !rcpNo) return null;
+  const db = getDb();
+  const cacheKey = `DART_BODY_${rcpNo}`;
+  const cached = db.prepare('SELECT content FROM news_cache WHERE source = ? AND url = ?').get('DART_BODY', rcpNo);
+  if (cached) {
+    console.log(`[DART] 공시 본문 DB 캐시 hit: ${rcpNo}`);
+    return cached.content || null;
+  }
+  try {
+    const res = await axios.get('https://opendart.fss.or.kr/api/document.xml', {
+      params: { crtfc_key: API_KEY, rcpNo },
+      timeout: 5000,
+      responseType: 'text'
+    });
+    const xml = res.data || '';
+    let summary = null;
+
+    const nums = [];
+    const salesMatch = xml.match(/매출액[^0-9]*([0-9,]+)/);
+    if (salesMatch) nums.push('매출' + (parseInt(salesMatch[1].replace(/,/g, '')) / 100000000).toFixed(0) + '억');
+    const opMatch = xml.match(/영업이익[^0-9\-]*(-?[0-9,]+)/);
+    if (opMatch) nums.push('영업익' + (parseInt(opMatch[1].replace(/,/g, '')) / 100000000).toFixed(0) + '억');
+    const yoyMatch = xml.match(/전년[동기대비]*\s*([+\-]?[0-9.]+)\s*%/);
+    if (yoyMatch) nums.push('YoY' + yoyMatch[1] + '%');
+    const newSharesMatch = xml.match(/신주발행주식수[^0-9]*([0-9,]+)/);
+    if (newSharesMatch) nums.push('신주' + parseInt(newSharesMatch[1].replace(/,/g, '')).toLocaleString() + '주');
+    const issuePriceMatch = xml.match(/발행가액[^0-9]*([0-9,]+)/);
+    if (issuePriceMatch) nums.push('발행가' + parseInt(issuePriceMatch[1].replace(/,/g, '')).toLocaleString() + '원');
+    const convPriceMatch = xml.match(/전환가액[^0-9]*([0-9,]+)/);
+    if (convPriceMatch) nums.push('전환가' + parseInt(convPriceMatch[1].replace(/,/g, '')).toLocaleString() + '원');
+    const totalAmtMatch = xml.match(/발행총액[^0-9]*([0-9,]+)/);
+    if (totalAmtMatch) nums.push('총액' + (parseInt(totalAmtMatch[1].replace(/,/g, '')) / 100000000).toFixed(0) + '억');
+
+    if (nums.length > 0) summary = nums.join(' ').slice(0, 50);
+
+    db.prepare('INSERT OR IGNORE INTO news_cache (date, source, title, url, content) VALUES (?, ?, ?, ?, ?)').run(
+      getTodayKST(), 'DART_BODY', rcpNo, rcpNo, summary || ''
+    );
+    return summary;
+  } catch (err) {
+    console.warn('[DART] 공시 본문 조회 실패:', err.message);
+    return null;
+  }
+}
+
 // checkDart: 단일 종목 wrapper
 async function checkDart(stockCode, stockName) {
   return checkNewDisclosures([{ stock_code: stockCode, stock_name: stockName }]);
 }
 
-module.exports = { checkNewDisclosures, checkDart, getDisclosures, getCorpCode, classifyDisclosure };
+module.exports = { checkNewDisclosures, checkDart, getDisclosures, getCorpCode, classifyDisclosure, fetchDisclosureBody };

@@ -8,6 +8,7 @@ const { filterNewsBatch } = require('../services/claude-haiku');
 const { checkNewDisclosures } = require('../services/dart');
 const { sendErrorAlert } = require('../services/alert');
 const { getTodayKST } = require('../services/dateutil');
+const { fetchSoxData, fetchExchangeRate } = require('../services/analyzer');
 
 async function runMorningReport() {
   if (!isWeekday(new Date())) return;

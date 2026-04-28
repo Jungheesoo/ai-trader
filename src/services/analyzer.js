@@ -5,8 +5,46 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { getTodayKST } = require('./dateutil');
 
+async function fetchYahooMeta(symbol, timeoutMs = 8000) {
+  const res = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`, {
+    params: { interval: '1d', range: '1d' },
+    headers: { 'User-Agent': 'Mozilla/5.0' },
+    timeout: timeoutMs
+  });
+  return res.data?.chart?.result?.[0]?.meta ?? null;
+}
+
+async function fetchSoxData() {
+  try {
+    const meta = await fetchYahooMeta('^SOX', 5000);
+    if (!meta) return null;
+    const price = meta.regularMarketPrice ?? null;
+    if (!price || price < 1000 || price > 20000) return null;
+    const changePercent = meta.regularMarketPrice && meta.previousClose
+      ? Math.round(((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 10000) / 100
+      : null;
+    return { price, changePercent, isDelayed: true };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchExchangeRate() {
+  try {
+    const meta = await fetchYahooMeta('KRW=X', 5000);
+    if (!meta) return null;
+    const rate = meta.regularMarketPrice ?? null;
+    if (!rate || rate < 1000 || rate > 2000) return null;
+    const change = meta.regularMarketPrice && meta.previousClose
+      ? Math.round((meta.regularMarketPrice - meta.previousClose) * 100) / 100
+      : null;
+    return { rate, change };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchUsMarketStatus() {
-  // Yahoo Finance v8 API — 크롤링 불필요, 구조적 JSON 응답
   const symbols = [
     { name: 'NASDAQ', symbol: '^IXIC' },
     { name: 'S&P500', symbol: '^GSPC' },
@@ -16,12 +54,7 @@ async function fetchUsMarketStatus() {
   const results = [];
   for (const idx of symbols) {
     try {
-      const res = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(idx.symbol)}`, {
-        params: { interval: '1d', range: '1d' },
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-        timeout: 8000
-      });
-      const meta = res.data?.chart?.result?.[0]?.meta;
+      const meta = await fetchYahooMeta(idx.symbol);
       if (!meta) { results.push({ name: idx.name, changeRate: null }); continue; }
       const changeRate = meta.regularMarketPrice && meta.previousClose
         ? Math.round(((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 10000) / 100
@@ -88,7 +121,7 @@ function shouldCallSonnet(holding, news = [], watchlistCandidate = null) {
   return { should: reasons.length > 0, reasons };
 }
 
-function buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, context, dartDisclosures = [], usMarket = [], candidateStocks = []) {
+function buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, context, dartDisclosures = [], usMarket = [], candidateStocks = [], sox = null, exRate = null) {
   const now = new Date();
   const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
   const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
@@ -147,12 +180,18 @@ MACD: ${h.macd ?? '데이터없음'} / MACD선: ${h.macdLine ?? '-'}
 트레일링스탑: ${h.trailingStop?.toLocaleString() ?? '데이터없음'}원${h.trailingStop && h.current_price <= h.trailingStop ? ' ⚠️도달!' : ''}
 ─ 수급 ${investorDateNote} ─
 외국인: ${h.foreignNet !== null ? (h.foreignNet >= 0 ? '+' : '') + h.foreignNet.toLocaleString() + '주' + foreignNetAmountStr : '데이터없음'} / 5일합산: ${h.foreignNet5Days !== null ? (h.foreignNet5Days >= 0 ? '+' : '') + h.foreignNet5Days.toLocaleString() + '주' : '-'} / 연속: ${h.foreignConsecutiveDays !== null ? h.foreignConsecutiveDays + '일' : '-'}
-기관: ${h.institutionNet !== null ? (h.institutionNet >= 0 ? '+' : '') + h.institutionNet.toLocaleString() + '주' : '데이터없음'} / 연속: ${h.institutionConsecutiveDays !== null ? h.institutionConsecutiveDays + '일' : '-'}`;
+기관: ${h.institutionNet !== null ? (h.institutionNet >= 0 ? '+' : '') + h.institutionNet.toLocaleString() + '주' : '데이터없음'} / 연속: ${h.institutionConsecutiveDays !== null ? h.institutionConsecutiveDays + '일' : '-'}
+─ 호가 ─
+매수벽: ${h.buyWall != null ? h.buyWall.toLocaleString() + '주' : '데이터없음(장외)'} / 매도벽: ${h.sellWall != null ? h.sellWall.toLocaleString() + '주' : '데이터없음(장외)'}${h.buyWall != null && h.sellWall != null ? ` → 매수/매도 비율: ${h.sellWall > 0 ? (h.buyWall / h.sellWall).toFixed(2) : '∞'}` : ''}`;
   }).join('\n---');
 
   const usMarketText = usMarket.length > 0
     ? usMarket.map(m => `${m.name}: ${m.changeRate !== null ? (m.changeRate >= 0 ? '+' : '') + m.changeRate + '%' : '데이터없음'}${m.futures !== undefined ? ` (선물 ${m.futures !== null ? (m.futures >= 0 ? '+' : '') + m.futures + '%' : '데이터없음'})` : ''}`).join(' / ')
     : '데이터없음 (크롤링 실패)';
+
+  const soxLine = sox ? `SOX: ${sox.price.toLocaleString()} (${sox.changePercent !== null ? (sox.changePercent >= 0 ? '+' : '') + sox.changePercent + '%' : '등락없음'}/15분지연)` : null;
+  const fxLine = exRate ? `USD/KRW: ${exRate.rate} (${exRate.change !== null ? (exRate.change >= 0 ? '+' : '') + exRate.change : '등락없음'})` : null;
+  const soxFxText = [soxLine, fxLine].filter(Boolean).join(' | ');
 
   // 뉴스 최적화: 최대 5건, 제목 + 50자 요약만 전달 (Sonnet 입력 토큰 절감)
   const newsText = relevantNews.length > 0
@@ -168,7 +207,7 @@ MACD: ${h.macd ?? '데이터없음'} / MACD선: ${h.macdLine ?? '-'}
   // DART 공시 텍스트
   const dartText = dartDisclosures.length > 0
     ? dartDisclosures.map(d =>
-        `${d.icon} [${d.stockName}] ${d.title} (${d.date}) — 영향: ${d.impact}\n공시URL: ${d.url}`
+        `${d.icon} [${d.stockName}] ${d.title}${d.summary ? ` (${d.summary})` : ''} (${d.date}) — 영향: ${d.impact}\n공시URL: ${d.url}`
       ).join('\n')
     : '신규 공시 없음';
 
@@ -191,7 +230,7 @@ MACD: ${h.macd ?? '데이터없음'} / MACD선: ${h.macdLine ?? '-'}
   return `분석 요청 시각: ${now.toLocaleString('ko-KR')} (${dayName}요일)
 장 마감까지: ${minutesLeft}분
 미국증시 실시간: ${usMarketText}
-${isFriday ? '⚠️ 오늘은 금요일입니다. 주말 리스크 고려 필요.' : ''}
+${soxFxText ? soxFxText + '\n' : ''}${isFriday ? '⚠️ 오늘은 금요일입니다. 주말 리스크 고려 필요.' : ''}
 ${isMonday ? '⚠️ 오늘은 월요일입니다. 주말 효과 가능성 고려.' : ''}
 
 === 총 자산 현황 ===
@@ -316,10 +355,13 @@ async function analyzePortfolio(enrichedHoldings, assets, allNews, watchlist, co
     return { triggered: false, relevantNews, dartDisclosures };
   }
 
-  // 미국증시 실시간 지수 크롤링 (Haiku 우회 — 직접 Sonnet에 전달)
-  const usMarket = await fetchUsMarketStatus();
+  const [usMarket, sox, exRate] = await Promise.all([
+    fetchUsMarketStatus(),
+    fetchSoxData(),
+    fetchExchangeRate()
+  ]);
 
-  const prompt = buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, context, dartDisclosures, usMarket, candidateStocks);
+  const prompt = buildSonnetPrompt(enrichedHoldings, assets, relevantNews, watchlist, context, dartDisclosures, usMarket, candidateStocks, sox, exRate);
   const result = await callSonnet(prompt);
 
   return { triggered: true, triggerReasons, relevantNews, dartDisclosures, analysis: result };
@@ -619,5 +661,7 @@ module.exports = {
   runClosingReport,
   runFridayCheck,
   runMondayCheck,
-  shouldCallSonnet
+  shouldCallSonnet,
+  fetchSoxData,
+  fetchExchangeRate
 };
