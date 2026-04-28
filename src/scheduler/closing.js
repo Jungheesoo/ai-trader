@@ -5,6 +5,7 @@ const { isWeekday } = require('../services/holiday');
 const { sendErrorAlert } = require('../services/alert');
 const { getPortfolioSummary, saveDailySeedGrowth } = require('../services/portfolio');
 const { getTodayKST } = require('../services/dateutil');
+const { fetchSoxData, fetchExchangeRate } = require('../services/analyzer');
 
 async function runClosingReport() {
   if (!isWeekday(new Date())) return;
@@ -35,6 +36,8 @@ async function runClosingReport() {
     const dayOfWeek = kst.getUTCDay();
     const isTomorrow = dayOfWeek === 5 ? '월' : ['일', '월', '화', '수', '목', '금', '토'][dayOfWeek + 1 > 6 ? 0 : dayOfWeek + 1];
     const isBeforeMonday = dayOfWeek === 5; // 금요일이면 다음날 월요일
+
+    const [sox, exRate] = await Promise.all([fetchSoxData(), fetchExchangeRate()]);
 
     const prompt = {
       portfolio_summary: {
@@ -77,6 +80,8 @@ async function runClosingReport() {
       market_context: {
         day_of_week: ['일', '월', '화', '수', '목', '금', '토'][dayOfWeek],
         is_before_monday: isBeforeMonday,
+        sox_index: sox ?? '미국 장 개장 전 — SOX 전일종가 기준 반영 불가',
+        usd_krw: exRate ?? '미국 장 개장 전 — 환율 전일종가 기준 반영 불가',
         report_type: 'closing'
       }
     };

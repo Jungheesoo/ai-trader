@@ -47,7 +47,9 @@ async function runMorningReport() {
     const isFriday = kst.getUTCDay() === 5;
     const isMonday = kst.getUTCDay() === 1;
 
-    const prompt = buildMorningPrompt(portfolio, watchlist, relevantNews, isFriday, isMonday, dartDisclosures);
+    const [sox, exRate] = await Promise.all([fetchSoxData(), fetchExchangeRate()]);
+
+    const prompt = buildMorningPrompt(portfolio, watchlist, relevantNews, isFriday, isMonday, dartDisclosures, sox, exRate);
     const result = await callSonnet(prompt, 'morning_report');
 
     if (!result) {
@@ -83,7 +85,7 @@ async function runMorningReport() {
   }
 }
 
-function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dartDisclosures = []) {
+function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dartDisclosures = [], sox = null, exRate = null) {
   const now = new Date();
   const minutesUntilClose = Math.max(0, Math.floor((new Date(now.toDateString() + ' 15:30:00') - now) / 60000));
   const availableCash = (portfolio.cash || 0) + (portfolio.newInvestment || 0);
@@ -150,6 +152,8 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dart
       is_friday: isFriday,
       is_monday: isMonday,
       minutes_until_close: minutesUntilClose,
+      ...(sox ? { sox_index: sox } : {}),
+      ...(exRate ? { usd_krw: exRate } : {}),
       report_type: 'morning',
       instruction: `투자 가능 현금 ${((portfolio.cash || 0) + (portfolio.newInvestment || 0)).toLocaleString()}원을 기준으로 아래 모든 시나리오를 비교해 가장 수익률이 높은 전략 하나를 선택하라.
 [시나리오]
