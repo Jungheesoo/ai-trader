@@ -56,6 +56,9 @@ async function sendUrgentAlert(holding, analysis, relevantNews = []) {
   if (analysis.why_sell_now) msg += `💰 익절 이유: ${analysis.why_sell_now}\n\n`;
   if (analysis.why_hold) msg += `🤚 보유 이유: ${analysis.why_hold}\n\n`;
   if (analysis.news_impact) msg += `📰 뉴스: ${analysis.news_impact}\n\n`;
+  if (analysis.target_price) msg += `🎯 목표가 ${fmt(analysis.target_price)}원${analysis.why_target_price ? ` — ${analysis.why_target_price}` : ''}\n`;
+  if (analysis.stop_loss) msg += `🛡 손절가 ${fmt(analysis.stop_loss)}원${analysis.why_stop_loss ? ` — ${analysis.why_stop_loss}` : ''}\n`;
+  if (analysis.target_price || analysis.stop_loss) msg += '\n';
 
   msg += `근거: ${(analysis.reason || '-').slice(0, 100)}\n\n`;
   msg += `👉 ${SERVER_URL}`;

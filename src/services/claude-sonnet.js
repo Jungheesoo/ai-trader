@@ -83,6 +83,8 @@ const SYSTEM_PROMPT = `당신은 한국 주식 단기 투자 분석 전문가입
   "news_impact": "뉴스가 판단에 미친 영향 요약 (없으면 '관련 뉴스 없음')",
   "why_sell_now": "매도 추천 시 구체적 이유 또는 null",
   "why_hold": "보유 추천 시 구체적 이유 또는 null",
+  "why_target_price": "목표가 설정 근거 (예: 볼린저밴드 상단 130,000원 / 52주 신고가 130,300원 저항선 / 전일 고점 등) 또는 null",
+  "why_stop_loss": "손절가 설정 근거 (예: 평단가 -5% / 볼린저밴드 하단 / 주요 지지선 이탈 등) 또는 null",
   "cash_recommendation": "재투자|현금보유|판단불가",
   "market_outlook": "오늘 시장 전망 한 줄",
   "key_risk": "오늘 주요 리스크 한 줄",

@@ -190,6 +190,8 @@ function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relev
 
     msg += `→ AI: ${ai.action || '판단불가'} [신뢰도: ${ai.confidence || '?'}]\n`;
     if (ai.current_upside) msg += `현재 종목 예상 추가 수익: ${ai.current_upside}\n`;
+    if (ai.target_price) msg += `🎯 AI 목표가: ${Math.round(ai.target_price).toLocaleString()}원${ai.why_target_price ? ` — ${ai.why_target_price}` : ''}\n`;
+    if (ai.stop_loss) msg += `🛡 AI 손절가: ${Math.round(ai.stop_loss).toLocaleString()}원${ai.why_stop_loss ? ` — ${ai.why_stop_loss}` : ''}\n`;
     msg += `근거: ${(ai.reason || '-').slice(0, 120)}\n\n`;
   }
 
