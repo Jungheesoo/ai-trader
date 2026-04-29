@@ -1,6 +1,7 @@
 const { getDb } = require('../db/database');
 const { callSonnet } = require('../services/claude-sonnet');
 const { sendKakao } = require('../services/kakao');
+const { sendTelegram } = require('../services/telegram');
 const { isWeekday } = require('../services/holiday');
 const { getPortfolioSummary, getMinutesUntilClose } = require('../services/portfolio');
 const { fetchAllRSS } = require('../services/rss');
@@ -82,6 +83,10 @@ async function runMorningReport() {
   } catch (err) {
     console.error('[Report] 모닝 리포트 오류:', err.message);
     await sendErrorAlert('[Report] 모닝 리포트 실패: ' + err.message);
+    await sendTelegram(
+      `🚨 [모닝 리포트 실패] ${err.message}\n조치: 수동으로 시장 확인 필요`,
+      'system', 'morning_fail', true
+    );
   }
 }
 

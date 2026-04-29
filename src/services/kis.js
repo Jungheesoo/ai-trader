@@ -13,10 +13,11 @@ let isRefreshing = false;
 let nextRetryAt = 0;
 
 // KIS 500 연속 실패 추적 → 자동 복귀
+let kisErrorCount = 0;     // 전역 누적 카운터 (PM2 재시작 전까지 유지)
 let kisFailCount = 0;
-let kisDownSince = null;   // 최초 500 발생 시각
-let kisRecoveryAt = null;  // 30분 후 재시도 허용 시각
-let kisDownAlerted = false; // 장애 알림 1회 제한
+let kisDownSince = null;
+let kisRecoveryAt = null;
+let kisDownAlerted = false;
 
 // 종목별 마지막 성공 데이터 캐시 (KIS 실패 시 fallback용)
 const lastSuccessCache = {};
@@ -115,10 +116,11 @@ async function requestWithRetry(fn, retries = 3) {
       if (kisDownSince) {
         console.log('[KIS] API 정상 복구');
         try {
-          const { sendMessage } = require('./kakao');
-          await sendMessage('✅ KIS API 정상 복구되었습니다. 실시간 데이터 재개.', 'kis_down', 'kis_recovery');
+          const { sendTelegram } = require('./telegram');
+          await sendTelegram('✅ KIS API 정상 복구되었습니다. 실시간 데이터 재개.', 'system', 'kis_recovery', false);
         } catch (e) { /* silent */ }
       }
+      kisErrorCount = 0;
       kisFailCount = 0;
       kisDownSince = null;
       kisRecoveryAt = null;
@@ -133,7 +135,19 @@ async function requestWithRetry(fn, retries = 3) {
       }
       if (status === 500) {
         kisFailCount++;
-        console.warn(`[KIS] 서버 오류 500 (${i + 1}/${retries}회, 누적 ${kisFailCount}회)`);
+        kisErrorCount++;
+        console.warn(`[KIS] 서버 오류 500 (${i + 1}/${retries}회, 누적 ${kisErrorCount}회)`);
+
+        if (kisErrorCount % 3 === 0) {
+          try {
+            const { sendTelegram } = require('./telegram');
+            await sendTelegram(
+              `🚨 [KIS API 장애] 서버 오류 500 연속 ${kisErrorCount}회\n영향: 현재가/수급 데이터 조회 불가\n조치: https://apiportal.koreainvestment.com 공지 확인`,
+              'system', `kis_error_${kisErrorCount}`, true
+            );
+          } catch (e) { /* silent */ }
+        }
+
         if (i < retries - 1) {
           console.log(`[KIS] ${retryDelays500[i] / 1000}초 후 재시도...`);
           await delay(retryDelays500[i]);
@@ -146,13 +160,6 @@ async function requestWithRetry(fn, retries = 3) {
           if (!kisDownAlerted) {
             kisDownAlerted = true;
             console.warn('[KIS] 3회 연속 실패 → 30분 후 자동 재시도');
-            try {
-              const { sendMessage } = require('./kakao');
-              await sendMessage(
-                `⚠️ KIS API 장애 감지 (500 3회 연속)\n네이버 금융으로 전환합니다.\n30분 후 자동 복구 시도합니다.`,
-                'kis_down', 'kis_down'
-              );
-            } catch (e) { /* silent */ }
           }
         }
         return null;

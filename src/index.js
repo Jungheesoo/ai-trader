@@ -141,6 +141,23 @@ cron.schedule('0 3 * * *', async () => {
   }
 }, { timezone: 'Asia/Seoul' });
 
+// 평일 08:50 - 장 시작 전 WS 상태 점검
+cron.schedule('50 8 * * 1-5', async () => {
+  const { isHoliday } = require('./services/holiday');
+  if (isHoliday(new Date())) return;
+  const { isConnected, connect } = require('./services/kis-websocket');
+  const { sendTelegram } = require('./services/telegram');
+  if (!isConnected()) {
+    await sendTelegram(
+      '⚠️ [08:50 점검] WS 미연결 상태\n장 시작 전 재연결 시도 중...',
+      'system', 'ws_check_0850', false
+    );
+    await connect();
+  } else {
+    console.log('[점검] 08:50 WS 정상 연결 확인');
+  }
+}, { timezone: 'Asia/Seoul' });
+
 // WebSocket: 장 시작(9:00)에 연결
 cron.schedule('0 9 * * 1-5', async () => {
   try {

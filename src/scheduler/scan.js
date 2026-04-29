@@ -6,6 +6,7 @@ const {
 } = require('../services/kis');
 const { isWeekday } = require('../services/holiday');
 const { sendErrorAlert } = require('../services/alert');
+const { sendTelegram } = require('../services/telegram');
 const { getTodayKST } = require('../services/dateutil');
 
 let isRunning = false;
@@ -58,6 +59,10 @@ async function runScan() {
       console.warn('[Scan] 거래량 순위 API 실패 — 기본 목록으로 fallback');
     }
 
+    if (changeRanks.status === 'rejected' || !changeRanks.value) {
+      console.warn('[Scan] 등락률 순위 API 실패');
+    }
+
     if (changeRanks.status === 'fulfilled' && changeRanks.value) {
       candidates.push(...changeRanks.value);
       console.log(`[Scan] 등락률 순위 ${changeRanks.value.length}종목 수집`);
@@ -66,6 +71,10 @@ async function runScan() {
     // 순위 API 모두 실패 시 기본 핵심 종목으로 fallback
     if (candidates.length === 0) {
       console.warn('[Scan] 순위 API 실패 → 핵심 종목 fallback');
+      await sendTelegram(
+        '⚠️ [Scan 경고] KIS 순위 API 실패 → 기본 종목으로 대체\n영향: watchlist가 고정 종목으로만 구성됨\n조치: 수동으로 관심 종목 확인 권장',
+        'system', 'scan_fallback', false
+      );
       candidates = [
         { code: '005930', name: '삼성전자' }, { code: '000660', name: 'SK하이닉스' },
         { code: '012450', name: '한화에어로스페이스' }, { code: '034020', name: '두산에너빌리티' },
@@ -196,6 +205,10 @@ async function runScan() {
   } catch (err) {
     console.error('[Scan] 스캔 오류:', err.message);
     await sendErrorAlert('[Scan] 동적 스캔 실패: ' + err.message);
+    await sendTelegram(
+      `🚨 [Scan 실패] 종목 스캔 완전 실패\n오류: ${err.message}\n영향: watchlist 없음 → 09:05 종목 추천 불가\n조치: pm2 restart ai-trader`,
+      'system', 'scan_fail', true
+    );
   } finally {
     clearTimeout(timeout);
     isRunning = false;

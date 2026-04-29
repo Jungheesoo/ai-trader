@@ -7,20 +7,19 @@ const { isMarketOpen } = require('../utils/market');
 const WS_URL = 'wss://openapi.koreainvestment.com:21000';
 const BASE_URL = process.env.KIS_BASE_URL || 'https://openapi.koreainvestment.com:9443';
 
-// 메모리 내 데이터 (최근 5분치만 유지, e2-micro 1GB RAM 고려)
-const tickData = {};   // { [stockCode]: [{time, price, strength}] }
-const hokaData = {};   // { [stockCode]: {buyWall, sellWall, updatedAt} }
+const tickData = {};
+const hokaData = {};
 
 let ws = null;
 let approvalKey = null;
 let reconnectTimer = null;
 let subscribedCodes = [];
 let isConnecting = false;
+let reconnectCount = 0;
 
 const TICK_MAX_MINUTES = 5;
 const TICK_CLEANUP_MS = TICK_MAX_MINUTES * 60 * 1000;
 
-// 오래된 틱 데이터 정리 (메모리 관리)
 function cleanupOldTicks() {
   const cutoff = Date.now() - TICK_CLEANUP_MS;
   for (const code of Object.keys(tickData)) {
@@ -77,11 +76,9 @@ function parseHokaData(raw, stockCode) {
   if (parts.length < 4) return;
   const fields = parts[3].split('^');
 
-  // 매도호가 1~5 잔량 합산 (인덱스 4~8)
   let sellWall = 0;
   for (let i = 4; i <= 8; i++) sellWall += parseInt(fields[i] || '0');
 
-  // 매수호가 1~5 잔량 합산 (인덱스 14~18)
   let buyWall = 0;
   for (let i = 14; i <= 18; i++) buyWall += parseInt(fields[i] || '0');
 
@@ -92,13 +89,11 @@ function handleMessage(data) {
   try {
     const str = data.toString();
 
-    // PINGPONG 응답
     if (str.includes('PINGPONG')) {
-      ws.send(str); // pong
+      ws.send(str);
       return;
     }
 
-    // JSON 응답 (구독 확인 등)
     if (str.startsWith('{')) return;
 
     const parts = str.split('|');
@@ -114,12 +109,11 @@ function handleMessage(data) {
         tickData[stockCode].push(tick);
         if (tickData[stockCode].length > 300) tickData[stockCode].shift();
 
-        // SSE broadcast
         try {
           const { broadcast } = require('../routes/stream');
           const parts2 = str.split('|');
           const fields2 = parts2[3].split('^');
-          const changeRate = parseFloat(fields2[9]) || 0; // 전일대비율
+          const changeRate = parseFloat(fields2[9]) || 0;
           broadcast(stockCode, tick.price, changeRate);
         } catch (e) { /* silent */ }
       }
@@ -139,19 +133,30 @@ async function connect(stockCodes = []) {
   if (isConnecting || (ws && ws.readyState === WebSocket.OPEN)) return;
 
   isConnecting = true;
-  subscribedCodes = stockCodes.slice(0, 10); // 최대 10종목
+  subscribedCodes = stockCodes.slice(0, 10);
 
   const key = await getApprovalKey();
   if (!key) { isConnecting = false; return; }
 
   ws = new WebSocket(WS_URL);
 
-  ws.on('open', () => {
+  ws.on('open', async () => {
+    const wasFailedBefore = reconnectCount >= 3;
     console.log('[KIS-WS] 연결 성공. 구독 종목:', subscribedCodes.join(', '));
     isConnecting = false;
+
+    if (wasFailedBefore) {
+      try {
+        const { sendTelegram } = require('./telegram');
+        await sendTelegram('✅ [WS 복구] KIS 실시간 시세 연결 정상화', 'system', 'ws_recover', false);
+      } catch (e) { /* silent */ }
+    }
+
+    reconnectCount = 0;
+
     for (const code of subscribedCodes) {
-      subscribe(code, 'H0STCNT0'); // 체결가
-      subscribe(code, 'H0STASP0'); // 호가
+      subscribe(code, 'H0STCNT0');
+      subscribe(code, 'H0STASP0');
     }
   });
 
@@ -162,26 +167,43 @@ async function connect(stockCodes = []) {
     isConnecting = false;
   });
 
-  ws.on('close', () => {
+  ws.on('close', async () => {
     console.log('[KIS-WS] 연결 종료');
     isConnecting = false;
     ws = null;
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    // 장 중이면 30초 후 재연결
-    if (isMarketOpen()) {
-      reconnectTimer = setTimeout(() => connect(subscribedCodes), 30000);
-      console.log('[KIS-WS] 30초 후 재연결 예정');
+
+    if (!isMarketOpen()) return;
+
+    const delay = Math.min(30 * Math.pow(2, reconnectCount), 300) * 1000;
+    reconnectCount++;
+    console.log(`[KIS-WS] ${Math.round(delay / 1000)}초 후 재연결 예정 (${reconnectCount}회차)`);
+
+    if (reconnectCount > 0 && reconnectCount % 3 === 0) {
+      try {
+        const { sendTelegram } = require('./telegram');
+        await sendTelegram(
+          `🚨 [WS 장애] KIS 실시간 시세 연결 실패\n연속 실패: ${reconnectCount}회\n영향: 실시간 체결강도/호가 조회 불가\n조치: 진입가는 REST API 기준으로 대체됨. 수동 확인 권장.\n👉 ${process.env.SERVER_URL || ''}`,
+          'system', `ws_fail_${reconnectCount}`, true
+        );
+      } catch (e) { /* silent */ }
     }
+
+    reconnectTimer = setTimeout(() => connect(subscribedCodes), delay);
   });
 }
 
 function disconnect() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   if (ws) { ws.close(); ws = null; }
+  reconnectCount = 0;
   console.log('[KIS-WS] 연결 해제');
 }
 
-// 최근 N분 평균 체결강도
+function isConnected() {
+  return ws !== null && ws.readyState === WebSocket.OPEN;
+}
+
 function getStrength(stockCode, minutes = 3) {
   const ticks = tickData[stockCode];
   if (!ticks || ticks.length === 0) return null;
@@ -191,17 +213,14 @@ function getStrength(stockCode, minutes = 3) {
   return Math.round(recent.reduce((sum, t) => sum + t.strength, 0) / recent.length);
 }
 
-// 매수호가 1~5 잔량 합계
 function getBuyWall(stockCode) {
   return hokaData[stockCode]?.buyWall ?? null;
 }
 
-// 매도호가 1~5 잔량 합계
 function getSellWall(stockCode) {
   return hokaData[stockCode]?.sellWall ?? null;
 }
 
-// 5분 전 대비 가격 변화율
 function get5MinChange(stockCode) {
   const ticks = tickData[stockCode];
   if (!ticks || ticks.length < 2) return null;
@@ -212,13 +231,11 @@ function get5MinChange(stockCode) {
   return Math.round(((latest.price - oldest.price) / oldest.price) * 10000) / 100;
 }
 
-// 알림 트리거 체크 (코드에서 직접 판단 — Claude 호출 없음)
 async function checkAlerts(holdings) {
   for (const h of holdings) {
     if (!h.stock_code) continue;
     const code = h.stock_code;
     const change5min = get5MinChange(code);
-    const strength = getStrength(code);
     const ticks = tickData[code];
     const latestPrice = ticks && ticks.length > 0 ? ticks[ticks.length - 1].price : null;
     if (!latestPrice) continue;
@@ -227,19 +244,16 @@ async function checkAlerts(holdings) {
     const trailingStop = h.trailingStop || null;
 
     try {
-      const { sendKakao } = require('./kakao');
+      const { sendTelegram } = require('./telegram');
 
-      // 5분간 -3% 이상 급락
       if (change5min !== null && change5min <= -3) {
-        await sendKakao(`⚠️ [${h.stock_name}] 5분 급락 ${change5min}%!\n현재가: ${latestPrice.toLocaleString()}원\n즉시 확인 필요`, h.stock_name, `ws_급락_${code}`, true);
+        await sendTelegram(`⚠️ [${h.stock_name}] 5분 급락 ${change5min}%!\n현재가: ${latestPrice.toLocaleString()}원\n즉시 확인 필요`, h.stock_name, `ws_급락_${code}`, true);
       }
-      // 목표가 도달
       if (shortTarget && latestPrice >= shortTarget) {
-        await sendKakao(`🎯 [${h.stock_name}] 목표가 도달!\n현재가: ${latestPrice.toLocaleString()}원 (목표가 ${shortTarget.toLocaleString()}원)\n익절 타이밍`, h.stock_name, `ws_목표가_${code}`, true);
+        await sendTelegram(`🎯 [${h.stock_name}] 목표가 도달!\n현재가: ${latestPrice.toLocaleString()}원 (목표가 ${shortTarget.toLocaleString()}원)\n익절 타이밍`, h.stock_name, `ws_목표가_${code}`, true);
       }
-      // 트레일링 스탑 도달
       if (trailingStop && latestPrice <= trailingStop) {
-        await sendKakao(`⚡ [${h.stock_name}] 트레일링 스탑 도달!\n현재가: ${latestPrice.toLocaleString()}원 (스탑 ${trailingStop.toLocaleString()}원)\n확인 필요`, h.stock_name, `ws_트레일링_${code}`, true);
+        await sendTelegram(`⚡ [${h.stock_name}] 트레일링 스탑 도달!\n현재가: ${latestPrice.toLocaleString()}원 (스탑 ${trailingStop.toLocaleString()}원)\n확인 필요`, h.stock_name, `ws_트레일링_${code}`, true);
       }
     } catch (e) { /* 알림 실패 무시 */ }
   }
@@ -248,6 +262,7 @@ async function checkAlerts(holdings) {
 module.exports = {
   connect,
   disconnect,
+  isConnected,
   getStrength,
   getBuyWall,
   getSellWall,
