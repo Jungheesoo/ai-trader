@@ -1,221 +1,272 @@
-# AI 트레이더 — Claude Code 작업 가이드
+# Claude Code 작업 가이드
 
-## 핵심 원칙
-- 파일 수정 전 반드시 Read로 현재 상태 확인
-- 변경 최소화: 요청된 것만 수정, 리팩터링/클린업 금지
-- 주석 추가 금지 (코드가 자명한 경우)
-- 에러 핸들링 추가 금지 (기존 패턴 유지)
-- 사용자 질문에 답할 때 항상 `TZ='Asia/Seoul' date`로 현재 KST 시간을 먼저 확인
+> Claude Code 터미널 환경에서 AI Trader 프로젝트 작업 시 반드시 준수할 규칙
 
 ---
 
-## 프로젝트 구조 (핵심만)
+## 🚨 절대 규칙
 
-```
-src/
-  index.js          # 진입점, cron 정의, Express 라우트
-  db/
-    database.js     # initDb(), getDb() — better-sqlite3 WAL
-    schema.sql      # 테이블 정의 (아래 DB 섹션 참고)
-  routes/
-    portfolio.js    # /api/portfolio/* (holdings, trades)
-    chat.js         # /api/chat
-    history.js      # /api/history
-  services/
-    kis.js          # KIS REST API (현재가, 수급)
-    kis-websocket.js # KIS WS 실시간 (H0STCNT0/H0STASP0)
-    kakao.js        # 텔레그램 발송, dedup (urgent=true 무제한, urgent=false 1시간 dedup)
-    claude-haiku.js # 뉴스 필터 (max_tokens 150)
-    claude-sonnet.js # 정밀 분석 (timeout 60s)
-    analyzer.js     # 모니터링 파이프라인 조율
-    portfolio.js    # 보유 종목 조회/계산, saveDailySeedGrowth()
-    rss.js          # RSS 다중 URL fallback
-    alert.js        # sendErrorAlert()
-    holiday.js      # isWeekday(), isHoliday() KST 기준
-    dateutil.js     # nowKST()
-    guard.js        # Sonnet 호출 rate limit (60s/3per-hr/15per-day)
-  utils/
-    market.js       # isMarketOpen(), getMarketStatus() KST 기반
-  scheduler/
-    morning.js      # 08:00 링크 발송
-    scan.js         # 08:00 퀀트 스캔 60종목
-    report.js       # 08:30 모닝 리포트 (Sonnet 1회)
-    monitor.js      # 장중 30분마다 (Sonnet 조건부)
-    closing.js      # 16:00 마감 리포트 + saveDailySeedGrowth()
-    friday.js       # 금 13:30 주말 점검
-    monday.js       # 월 09:30 주말 효과 판단
-    weekly.js       # 일 10:00 주간 성과 (Sonnet 없음)
-    monthly.js      # 마지막 금요일 16:30 월간 리포트 (Sonnet 1회)
-    night.js        # 23:00/02:00 미국 시장 (Haiku만)
-  public/
-    index.html      # 대시보드
-    portfolio.html  # 자산입력 + 매매완료 입력
-    chat.html       # AI 질문
-    history.html    # 분석 이력
+### 금지 사항
+- ❌ `.env` 파일 수정 금지 (토큰/키 유출 위험)
+- ❌ `data/trading.db` 직접 수정 금지 (무결성 파괴)
+- ❌ `src/db/schema.sql` 수정 시 마이그레이션 없이 반영 금지
+- ❌ `package.json` 의존성 변경 시 사전 논의 필수
+- ❌ KST 시간 처리를 `new Date().getHours()` 로 절대 사용 금지 (서버 UTC 기준)
+- ❌ `kakao.js` 관련 코드 신규 추가 금지 (텔레그램으로 완전 전환)
+- ❌ Sonnet 호출 시 rate limit 우회 시도 금지
+
+### 보호 파일 (읽기 전용)
+- `ecosystem.config.js` - PM2 설정 (수정 시 재시작 필수)
+- `.github/` - CI/CD 워크플로우
+- `deploy.sh`, `setup.sh` - 배포 스크립트
+
+---
+
+## 🛠️ 자주 사용하는 명령어
+
+### 로컬 개발
+```bash
+npm start              # 일반 실행
+npm run dev            # watch 모드 (파일 변경 시 자동 재시작)
 ```
 
+### PM2 (프로덕션)
+```bash
+pm2 start ecosystem.config.js    # 시작
+pm2 restart ai-trader            # 재시작
+pm2 logs ai-trader --lines 50    # 로그 확인
+pm2 monit                        # 실시간 모니터링
+```
+
+### 데이터베이스
+```bash
+# DB 직접 조회 (읽기만)
+node -e "const db = require('./src/db/database').getDb(); console.log(db.prepare('SELECT * FROM watchlist WHERE date = ?').all('2026-05-03'));"
+
+# 오늘 알림 건수 확인
+node -e "const db = require('./src/db/database').getDb(); const today = new Date(Date.now() + 9*3600*1000).toISOString().slice(0,10); console.log('오늘 알림:', db.prepare('SELECT COUNT(*) as cnt FROM alerts WHERE date = ?').get(today));"
+```
+
+### 테스트 명령어
+```bash
+# 모듈 로드 테스트
+node -e "require('./src/services/telegram'); console.log('✅ telegram 로드 OK');"
+
+# KST 시간 확인
+TZ='Asia/Seoul' date
+node -e "const kst = new Date(Date.now() + 9*3600*1000); console.log('KST:', kst.toISOString());"
+
+# 수수료 계산 검증
+node -e "const { calcRealPnL } = require('./src/services/portfolio'); console.log(calcRealPnL(157100, 156600, 9));"
+```
+
 ---
 
-## DB 스키마 요약
+## 📏 코드 수정 규칙
 
-| 테이블 | 주요 컬럼 | 용도 |
-|--------|-----------|------|
-| holdings | date, stock_name, stock_code, quantity, avg_price, current_price | 보유 종목 (날짜별) |
-| trades | date, stock_name, stock_code, trade_type, quantity, price, avg_price, profit_loss | 실현 손익 기록 |
-| analysis | date, stock_name, action, reason, target_price, stop_loss, actual_result | Sonnet 분석 이력 |
-| seed_growth | date, total_assets, stock_value, cash, realized_profit | 일별 자산 성장 |
-| watchlist | date, stock_name, stock_code, rsi, macd, volume_ratio, reason | 스캔 결과 |
-| news_cache | date, source, title, url, haiku_result | 뉴스 중복 방지 |
-| performance | week, total_recommendations, correct_recommendations, accuracy_rate | 주간 성과 |
-| alerts | date, stock_name, alert_type, sent_at | 발송 이력 (dedup용) |
-| api_calls | date, model, call_count_today, call_count_hour | Sonnet 사용량 |
-
-`trades.trade_type`: `sell_profit` / `sell_loss` / `switch` / `buy`
-
----
-
-## 핵심 패턴
-
-### KST 시간 처리
-```js
-// 항상 이 방식 사용
+### KST 시간 처리 (필수 패턴)
+```javascript
+// ✅ 올바른 방법
 const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
-const day = kst.getUTCDay();
-const hour = kst.getUTCHours();
-```
-- `new Date().getHours()` 절대 사용 금지 (서버 UTC 기준)
+const day = kst.getUTCDay();        // 0(일)~6(토)
+const hour = kst.getUTCHours();     // 0~23 (KST)
+const dateStr = kst.toISOString().slice(0, 10);  // 'YYYY-MM-DD'
 
-### 장 외 가드
-```js
-const { isMarketOpen } = require('../utils/market');
-if (!isMarketOpen()) return; // KIS API 호출 전 반드시 체크
+// ❌ 절대 사용 금지
+const hour = new Date().getHours();  // 서버 UTC 기준!
 ```
 
-### Sonnet 호출
-```js
+### Sonnet 호출 (guard.js 자동 처리)
+```javascript
+// ✅ 올바른 방법 - guard.js가 rate limit 자동 체크
 const { callSonnet } = require('../services/claude-sonnet');
-// guard.js가 rate limit 자동 처리 — 별도 체크 불필요
 const result = await callSonnet(promptObj, 'call_type');
+
+// ❌ 잘못된 방법 - 직접 axios 호출 금지
+// rate limit 우회하면 비용 폭발
 ```
 
-### DB 쿼리
-```js
-const db = getDb(); // better-sqlite3, 동기
-const row = db.prepare('SELECT ...').get(param);
-const rows = db.prepare('SELECT ...').all(param);
-db.prepare('INSERT/UPDATE ...').run(params);
+### DB 쿼리 (동기 방식)
+```javascript
+// ✅ 올바른 방법 - better-sqlite3는 동기
+const db = getDb();
+const row = db.prepare('SELECT * FROM holdings WHERE date = ?').get(today);
+const rows = db.prepare('SELECT * FROM watchlist').all();
+db.prepare('INSERT INTO alerts (...) VALUES (?, ?)').run(date, msg);
+
+// ❌ await 사용 금지 (에러 발생)
+// const row = await db.prepare(...).get();  // 동작 안 함
 ```
 
-### 텔레그램 발송
-```js
-const { sendKakao } = require('../services/kakao'); // 파일명 유지 (하위호환)
-await sendKakao(msg, stockName, alertType, urgent);
-// urgent=true: dedup 건너뛰고 무조건 발송 (급락·목표가·트레일링·긴급 알림)
-// urgent=false(기본): 동일 stockName+alertType 1시간 내 중복 차단
-// 텔레그램 실제 제한: 분당 30건 (일 제한 없음)
-// .env: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID 필요
+### 텔레그램 발송 (중복 차단)
+```javascript
+// ✅ 올바른 방법
+const { sendTelegram } = require('../services/telegram');
+await sendTelegram(msg, stockName, alertType, urgent);
+// urgent=true: 즉시 발송 (급락, 목표가)
+// urgent=false: 1시간 중복 차단
+
+// ❌ 잘못된 방법 - kakao.js 사용 금지
+// const { sendKakao } = require('../services/kakao');  // 파일 삭제됨
 ```
 
-### RSS fallback
-```js
-// rss.js: {name, urls[]} 구조, fetchRSSWithFallback() 사용
-// URL 추가 시 urls 배열에 append
+### 장 외 가드 (API 호출 전 필수)
+```javascript
+// ✅ 올바른 방법
+const { isMarketOpen } = require('../utils/market');
+if (!isMarketOpen()) return;  // KIS API 호출 전 체크
+await getCurrentPrice(code);
+
+// ❌ 장 외 호출 시 KIS 500 에러 발생
 ```
 
 ---
 
-## 수정 시 주의사항
+## 🗂️ 파일별 수정 지침
 
-### services/portfolio.js
-- `kisBackupMode` 전역 변수 없음 (의도적 제거). 종목별 독립 fallback
-- `?? null` 사용 (`|| null` 금지) — 0값 보존 필요 (외국인 수급 0 = 중립)
-- off-market 시 DB 저장값 반환, KIS/naver 호출 금지
+### `src/index.js` - 메인 진입점
+- cron 스케줄 추가 시 KST 기준 확인 (`timezone: 'Asia/Seoul'`)
+- 새 라우트 추가 시 `/api/` prefix 유지
+- Express 미들웨어 순서 변경 금지
 
-### services/kis.js
-- `getInvestorData()`: KIS 당일 데이터 공백 → 전일(d[1]) 자동 fallback
-- `foreignNet5Days`, `foreignConsecutiveDays`, `institutionConsecutiveDays` 필드 존재
+### `src/services/claude-sonnet.js` - AI 호출
+- `SYSTEM_PROMPT` 수정 시 JSON 응답 형식 검증 필수
+- timeout 60초 고정 (변경 금지)
+- `callSonnet()` 함수 시그니처 변경 시 모든 호출부 동시 수정
 
-### scheduler/closing.js
-- `saveDailySeedGrowth()` 호출 — trades 테이블 기반 실현 손익 집계
+### `src/services/kis-websocket.js` - 실시간 데이터
+- `connect()` 호출 전 `isMarketOpen()` 체크 필수
+- 최대 10종목 제한 준수 (KIS 제약)
+- `disconnect()` 누락 시 메모리 누수 → 15:35 cron 확인
 
-### scheduler/monthly.js
-- `isLastFridayOfMonth()` 선행 체크 — 마지막 금요일만 실행
+### `src/services/portfolio.js` - 보유종목 관리
+- `getTodayHoldings()` - 08:10 이후 전일 데이터 자동 사용 (수정 금지)
+- `calcRealPnL()` - 수수료 계산 로직 변경 시 검증 필수 (`STOCK_SELL_TAX_RATE`)
+- `saveDailySeedGrowth()` - `trades` 테이블 기반 실현손익 집계 (변경 금지)
 
-### services/guard.js
-- PM2 재시작 시 `lastSonnetCallTime` DB(`api_calls.last_called_at`) 자동 복원
-- `hourCallCount`는 clock hour 기준 (현재 시간대 DB 집계로 복원). rolling window 미구현
+### `src/scheduler/scan.js` - 종목 스캔
+- fallback 하드코딩 목록 절대 추가 금지 (v7에서 완전 제거)
+- score 계산 로직 수정 시 `watchlist.score` 컬럼 업데이트
+- 최소 5점 이상 통과 기준 유지
 
-### services/analyzer.js
-- Sonnet pre-validation: holdings/current_price/RSI 없으면 스킵
-- 뉴스 max 5개, 50자 요약
-- watchlist max 5개
-- `fetchSoxData()`·`fetchExchangeRate()`: Yahoo Finance v8, 15분 지연
-- DART URGENT_BAD 공시 시 `fetchDisclosureBody(rcpNo)` 본문 분석 (dart.js)
+### `src/scheduler/recommendation.js` - 종목 추천
+- 08:50 WS 사전 연결 후 09:05 실행 (순서 변경 금지)
+- `morning_strategy` 테이블에 추천 이력 저장
+- Sonnet 1회 호출 제한 (루프 금지)
 
 ---
 
-## Sonnet JSON 응답 형식
+## 🐛 자주 발생하는 실수와 해결
 
-```json
-{
-  "action": "sell_all|buy_more|hold|switch_stock|buy_new|hold_cash|unknown",
-  "reason": "string",
-  "confidence": "high|medium|low",
-  "current_upside": number,
-  "target_price": number,
-  "stop_loss": number,
-  "entry_price": number,
-  "market_outlook": "string",
-  "key_risk": "string",
-  "switch_stock": {
-    "name": "string",
-    "code": "string",
-    "reason": "string",
-    "expected_upside": number,
-    "target_price": number,
-    "stop_loss": number,
-    "entry_price": number
-  }
+### 1. KIS API 500 에러
+**원인**: 장 외 시간에 현재가 조회
+**해결**:
+```javascript
+const { isMarketOpen } = require('../utils/market');
+if (!isMarketOpen()) {
+  // DB에서 저장된 값 사용 또는 스킵
+  return;
 }
 ```
 
+### 2. WebSocket 연결 실패 반복
+**원인**: 장 외 연결 시도 또는 잘못된 종목코드
+**해결**:
+- `src/index.js` 08:50/09:00 스케줄 확인
+- 보유종목 없을 때 `connect([])` 호출 금지
+
+### 3. Sonnet 호출 한도 초과
+**원인**: `guard.js` 우회 또는 루프 내 호출
+**해결**:
+```javascript
+// ❌ 잘못된 예
+for (const stock of watchlist) {
+  await callSonnet(...);  // 10번 호출 = 즉시 한도 초과
+}
+
+// ✅ 올바른 예
+const prompt = { watchlist };  // 한 번에 전달
+const result = await callSonnet(prompt, 'scan');
+```
+
+### 4. 텔레그램 메시지 4096자 초과
+**원인**: 긴 메시지 발송 시 자동 절단 미처리
+**해결**:
+- `telegram.js`에서 3900자에서 자동 절단 + 더보기 링크 (이미 구현됨)
+- 수동 slice 시 `message.slice(0, 3900)` 사용
+
+### 5. DB 날짜 형식 불일치
+**원인**: ISO 슬라이스 없이 저장
+**해결**:
+```javascript
+// ✅ 올바른 방법
+const today = new Date(Date.now() + 9*3600*1000).toISOString().slice(0, 10);
+db.prepare('INSERT ... VALUES (?)').run(today);  // 'YYYY-MM-DD'
+
+// ❌ 잘못된 방법
+db.prepare('... VALUES (?)').run(new Date());  // ISO 전체 문자열
+```
+
 ---
 
-## cron 타임라인 (index.js)
+## 🔧 외부 API 연동 주의사항
 
-| 시간(KST) | 스케줄 | 함수 |
-|-----------|--------|------|
-| 08:00 평일 | `0 8 * * 1-5` | runMorningLink + runScan |
-| 08:10 평일 | `10 8 * * 1-5` | 자산입력 마감 체크 |
-| 08:30 평일 | `30 8 * * 1-5` | runMorningReport |
-| 09:00 평일 | `0 9 * * 1-5` | kisWs.connect() |
-| 09:00~15:30 평일 | `0,30 9-15 * * 1-5` | runMonitor |
-| 09:30 월요일 | `30 9 * * 1` | runMondayCheck |
-| 13:30 금요일 | `30 13 * * 5` | runFridayCheck |
-| 15:35 평일 | `35 15 * * 1-5` | kisWs.disconnect() |
-| 16:00 평일 | `0 16 * * 1-5` | runClosingReport |
-| 16:30 금요일 | `30 16 * * 5` | runMonthlyReport |
-| 23:00 매일 | `0 23 * * *` | runNightMonitor |
-| 02:00 매일 | `0 2 * * *` | runNightMonitor |
-| 10:00 일요일 | `0 10 * * 0` | runWeeklyReport |
+### KIS API
+- **Rate Limit**: 초당 20건 (과부하 방지 0.4초 딜레이 필수)
+- **WebSocket**: 종목당 1연결, 최대 10종목
+- **500 에러**: 장 외 호출 시 정상 (에러 카운터 제거됨)
 
----
+### Telegram
+- **분당 30건** 제한 (초과 시 429 에러)
+- **중복 차단**: `alerts` 테이블 기반 1시간 dedup (urgent=false 시)
+- **환경변수**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` 필수
 
-## WebSocket (kis-websocket.js)
-
-- `connect(stockCodes)`: 최대 10종목, `isMarketOpen()` 체크 후 연결
-- `H0STCNT0`: 체결 tick → `tickData[code]` (max 300개, 5분 window)
-- `H0STASP0`: 호가 → `hokaData[code]` (buyWall/sellWall)
-- 장 중 연결 끊기면 30초 후 자동 재연결
-- `checkAlerts(holdings)`: -3% 5분 급락 / 목표가 / 트레일링 스탑 → 직접 텔레그램 발송
+### Claude API
+- **Sonnet**: 시간당 5회, 일일 15회 (guard.js 자동 제어)
+- **Haiku**: 제한 없음 (비용 저렴)
+- **Timeout**: Sonnet 60초, Haiku 15초 고정
 
 ---
 
-## 금지 패턴
+## 📦 토큰 절약 가이드
 
-- `require` 내부에서 동적 사용 지양 (단, 순환참조 방지 목적은 허용)
-- `process.env` 접근 시 `.env` 로드 확인 (`dotenv.config()` 상단)
-- DB 쿼리에서 날짜는 `YYYY-MM-DD` TEXT 형식 (ISO 슬라이스: `.toISOString().slice(0,10)`)
-- 텔레그램 메시지 4096자 초과 금지 (자동 절단 없음 — 수동 slice 필요)
-- `kakao.js` 파일명은 유지 (전체 import 경로 변경 방지). 내부 구현만 텔레그램
-- 카카오 관련 env 변수(`KAKAO_*`) 참조 코드 신규 추가 금지
+### 파일 읽기 최소화
+- `src/scheduler/*` 수정 시 해당 파일만 읽기
+- `src/services/kis.js` 수정 시 `kis-websocket.js`도 함께 확인 (연관성)
+- `src/index.js` cron 스케줄 확인 시 `scheduler/` 전체 읽기 불필요
+
+### 작업 단위 예시
+| 작업 | 필요한 파일 |
+|------|-------------|
+| 새 스케줄 추가 | `src/index.js`, 신규 `scheduler/*.js` |
+| 알림 포맷 변경 | `src/services/telegram.js`, 호출부 (closing.js 등) |
+| DB 스키마 변경 | `src/db/schema.sql`, 관련 쿼리 파일 |
+| Sonnet 프롬프트 수정 | `src/services/claude-sonnet.js` 만 |
+
+---
+
+## 🎯 프로젝트 특유 컨벤션
+
+### 변수명
+- KST 시간: `kst`, `kstHour`, `kstDay`
+- 종목명: `stock_name` (snake_case, DB 컬럼과 일치)
+- 종목코드: `stock_code` (6자리 숫자, 예: `'005930'`)
+
+### 함수명
+- 스케줄러: `run{TaskName}` (예: `runScan`, `runMorningReport`)
+- API 호출: `fetch{Resource}` (예: `fetchAllRSS`, `fetchSoxData`)
+- 계산: `calculate{Metric}` (예: `calculateRSI`, `calcRealPnL`)
+
+### 에러 처리
+- 외부 API 호출은 반드시 try-catch
+- 에러 시 `console.error` + `sendErrorAlert()` (알림 발송)
+- 스케줄러 내 에러는 전체 중단하지 않고 로그만 (다음 실행 보장)
+
+### 주석
+- 코드가 자명한 경우 주석 불필요
+- 비즈니스 로직 "왜"만 간결하게
+- TODO 주석 금지 (즉시 수정 또는 이슈 생성)
+
+---
+
+**마지막 업데이트**: 2026-05-03
