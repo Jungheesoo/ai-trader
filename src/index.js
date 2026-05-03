@@ -68,6 +68,22 @@ cron.schedule('30 8 * * 1-5', async () => {
   await runMorningReport();
 }, { timezone: 'Asia/Seoul' });
 
+// 평일 09:01 - 스캔 재시도 (08:00 실패 시만)
+cron.schedule('1 9 * * 1-5', async () => {
+  if (!isWeekday(new Date())) return;
+  const db = require('./db/database').getDb();
+  const { getTodayKST } = require('./services/dateutil');
+  const today = getTodayKST();
+  const count = db.prepare('SELECT COUNT(*) as cnt FROM watchlist WHERE date = ?').get(today).cnt;
+
+  if (count === 0) {
+    console.log('[Scan] 08:00 스캔 실패 감지 → 09:01 재실행');
+    await runScan();
+  } else {
+    console.log(`[Scan] 08:00 스캔 성공 (${count}종목) → 09:01 재실행 스킵`);
+  }
+}, { timezone: 'Asia/Seoul' });
+
 // 평일 장 중 30분마다 (9:00~15:30)
 cron.schedule('0,30 9-15 * * 1-5', async () => {
   await runMonitor();
