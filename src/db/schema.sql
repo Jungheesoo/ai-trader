@@ -136,8 +136,28 @@ CREATE TABLE IF NOT EXISTS dart_codes (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS dawn_candidates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  stock_name TEXT NOT NULL,
+  source TEXT,
+  reason TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS morning_strategy (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL UNIQUE,
+  strategy TEXT,
+  watch_stocks TEXT,
+  switch_candidate TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_trades_date ON trades(date);
 CREATE INDEX IF NOT EXISTS idx_news_cache_date ON news_cache(date);
 CREATE INDEX IF NOT EXISTS idx_news_cache_url ON news_cache(url);
 CREATE INDEX IF NOT EXISTS idx_analysis_date ON analysis(date);
 CREATE INDEX IF NOT EXISTS idx_holdings_date ON holdings(date);
+CREATE INDEX IF NOT EXISTS idx_dawn_candidates_date ON dawn_candidates(date);
+CREATE INDEX IF NOT EXISTS idx_morning_strategy_date ON morning_strategy(date);
