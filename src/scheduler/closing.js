@@ -1,9 +1,9 @@
 const { getDb } = require('../db/database');
 const { callSonnet } = require('../services/claude-sonnet');
-const { sendKakao } = require('../services/kakao');
+const { sendTelegram, getKSTHeader } = require('../services/telegram');
 const { isWeekday } = require('../services/holiday');
 const { sendErrorAlert } = require('../services/alert');
-const { getPortfolioSummary, saveDailySeedGrowth } = require('../services/portfolio');
+const { getPortfolioSummary, saveDailySeedGrowth, calcRealPnL } = require('../services/portfolio');
 const { getTodayKST } = require('../services/dateutil');
 const { fetchSoxData, fetchExchangeRate } = require('../services/analyzer');
 
@@ -96,7 +96,7 @@ async function runClosingReport() {
     ).all(today);
 
     const message = formatClosingReport(portfolio, sonnetCount, alertCount?.cnt || 0, cashHoldCount?.cnt || 0, result, isBeforeMonday, todayTrades);
-    await sendKakao(message);
+    await sendTelegram(message);
 
     // 시드 성장 기록 (trades 기반으로 정확한 실현손익 저장)
     saveDailySeedGrowth();
@@ -112,7 +112,7 @@ function formatClosingReport(portfolio, sonnetCount, alertCount, cashHoldCount, 
   const today = getTodayKST();
   const serverUrl = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
 
-  let msg = `📋 AI 트레이더 마감 결산 ${today}\n\n`;
+  let msg = `📋 [마감 리포트] ${getKSTHeader()}\n\n`;
 
   // ── 오늘 손익
   msg += `━━━━━━━━━━━━━━\n💰 오늘 손익\n━━━━━━━━━━━━━━\n`;
@@ -120,6 +120,11 @@ function formatClosingReport(portfolio, sonnetCount, alertCount, cashHoldCount, 
     for (const h of portfolio.holdings) {
       const pSign = (h.profitRate || 0) >= 0 ? '+' : '';
       msg += `[${h.stock_name}] ${pSign}${(h.profitRate || 0).toFixed(1)}% / ${pSign}${Math.round(h.profitLoss || 0).toLocaleString()}원\n`;
+
+      // 실질손익 (제세금 포함) 추가
+      const real = calcRealPnL(h.avg_price || 0, h.current_price || h.avg_price || 0, h.quantity || 0);
+      msg += `실질손익(세후): ${real.realPnL >= 0 ? '+' : ''}${real.realPnL.toLocaleString()}원 / 제세금: ${real.sellTax.toLocaleString()}원\n`;
+
       msg += `현재가: ${(h.current_price || 0).toLocaleString()}원 / 평단: ${(h.avg_price || 0).toLocaleString()}원\n`;
       const rsiStr = h.rsi ? `RSI ${h.rsi.toFixed(0)}${h.rsi >= 70 ? '(과매수)' : h.rsi <= 30 ? '(과매도)' : ''}` : '';
       if (rsiStr) msg += `${rsiStr} / MACD: ${h.macd || '-'}\n`;
@@ -201,6 +206,16 @@ function formatClosingReport(portfolio, sonnetCount, alertCount, cashHoldCount, 
     if (ai?.warning) msg += `${ai.warning}\n`;
     msg += '\n';
   }
+
+  // ── 내일 재진입 조건
+  msg += `━━━━━━━━━━━━━━\n✅ 내일 재진입 조건\n━━━━━━━━━━━━━━\n`;
+  msg += `① 나스닥선물 -1% 이내\n`;
+  if (portfolio.holdings && portfolio.holdings.length > 0) {
+    msg += `② ${portfolio.holdings.map(h => h.stock_name).join('/')} 외국인/기관 순매수 전환 여부\n`;
+  } else {
+    msg += `② watchlist 상위 종목 외국인/기관 수급 확인\n`;
+  }
+  msg += `③ 대체 종목 RSI/MACD 점검 후 진입\n\n`;
 
   msg += `👉 ${serverUrl}`;
   return msg;

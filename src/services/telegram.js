@@ -11,6 +11,12 @@ function getToday() {
   return getTodayKST();
 }
 
+function getKSTHeader() {
+  const kst = new Date(Date.now() + 9 * 3600 * 1000);
+  const days = ['일','월','화','수','목','금','토'];
+  return `${String(kst.getUTCMonth()+1).padStart(2,'0')}/${String(kst.getUTCDate()).padStart(2,'0')} (${days[kst.getUTCDay()]}) ${String(kst.getUTCHours()).padStart(2,'0')}:${String(kst.getUTCMinutes()).padStart(2,'0')}`;
+}
+
 function getTodayCount() {
   const db = getDb();
   const today = getToday();
@@ -54,6 +60,12 @@ async function sendTelegram(message, stockName = '', alertType = 'info', urgent 
   }
 
   try {
+    // 4000자 초과 시 자동 절단 + 더보기 링크 추가
+    const SERVER_URL = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
+    if (typeof message === 'string' && message.length > 3900) {
+      message = message.slice(0, 3900) + `\n…더보기 👉 ${SERVER_URL}`;
+    }
+
     const LIMIT = 4096;
     if (message.length <= LIMIT) {
       await sendRaw(message);
@@ -88,5 +100,6 @@ async function sendTelegram(message, stockName = '', alertType = 'info', urgent 
 
 module.exports = {
   sendTelegram,
-  getTodayCount
+  getTodayCount,
+  getKSTHeader
 };

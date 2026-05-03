@@ -1,6 +1,6 @@
 const { collectNightNews } = require('../services/rss');
 const { filterNewsBatch } = require('../services/claude-haiku');
-const { sendKakao } = require('../services/kakao');
+const { sendTelegram } = require('../services/telegram');
 const { sendErrorAlert } = require('../services/alert');
 const { getDb } = require('../db/database');
 const axios = require('axios');
@@ -80,7 +80,7 @@ async function runNightMonitor() {
         }
       });
       msg += `\n⚠️ 내일 개장 시 즉각 대응 필요. 모닝 리포트 확인\n\n👉 ${serverUrl}`;
-      await sendKakao(msg);
+      await sendTelegram(msg);
     }
 
     if (!allNews || allNews.length === 0) {
@@ -102,14 +102,14 @@ async function runNightMonitor() {
         msg += `⚠️ ${n.title}\n감지: ${n.reason}\n\n`;
       }
       msg += `내일 모닝 리포트에서 AI 분석 예정\n\n👉 ${serverUrl}`;
-      await sendKakao(msg);
+      await sendTelegram(msg);
     } else if (important.length > 0) {
       let msg = `🌙 [야간 이슈] ${hour}\n\n`;
       const marketLine = usMarket.filter(m => m.changeRate !== null).map(m => `${m.name} ${m.changeRate >= 0 ? '+' : ''}${m.changeRate}%`).join(' / ');
       if (marketLine) msg += `미국 증시: ${marketLine}\n`;
       msg += `감지: ${important[0].reason}\n`;
       msg += `내일 모닝 리포트에서 AI 분석 예정\n\n👉 ${serverUrl}`;
-      await sendKakao(msg);
+      await sendTelegram(msg);
     } else {
       // 특이사항 없어도 미국 시장 현황은 로그
       const marketLine = usMarket.filter(m => m.changeRate !== null).map(m => `${m.name} ${m.changeRate >= 0 ? '+' : ''}${m.changeRate}%`).join(' / ');

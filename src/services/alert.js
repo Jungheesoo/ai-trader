@@ -1,4 +1,4 @@
-const { sendMessage } = require('./kakao');
+const { sendTelegram: sendMessage } = require('./telegram');
 
 const SERVER_URL = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
 
@@ -27,10 +27,47 @@ async function sendUrgentAlert(holding, analysis, relevantNews = []) {
   const isSwitch = action.includes('갈아타기') || action.includes('switch');
   const isHold = action.includes('보유');
 
+  // 갈아타기 전용 포맷
+  if (isSwitch && analysis.switch_stock?.name) {
+    const kst = new Date(Date.now() + 9 * 3600 * 1000);
+    const days = ['일','월','화','수','목','금','토'];
+    const dateHeader = `${String(kst.getUTCMonth()+1).padStart(2,'0')}/${String(kst.getUTCDate()).padStart(2,'0')} (${days[kst.getUTCDay()]}) ${String(kst.getUTCHours()).padStart(2,'0')}:${String(kst.getUTCMinutes()).padStart(2,'0')}`;
+    const sw = analysis.switch_stock;
+    const availCash = (holding.current_price || holding.avg_price) * (holding.quantity || 1);
+    const buyableQty = sw.entry_price ? Math.floor(availCash / sw.entry_price) : null;
+
+    let msg = `🔄 [갈아타기] ${dateHeader}\n`;
+    msg += `${holding.stock_name || '현 종목'} → ${sw.name}\n\n`;
+    if (analysis.why_sell_now) msg += `현 종목 매도 근거: ${analysis.why_sell_now.slice(0,100)}\n`;
+    msg += `─────────────\n`;
+    msg += `신규: ${sw.name}${sw.code ? `(${sw.code})` : ''}\n`;
+    if (sw.entry_price) {
+      msg += `현재가: ${sw.entry_price.toLocaleString()}원 (REST실시간)\n`;
+      msg += `진입가: ${sw.entry_price.toLocaleString()}원`;
+      if (buyableQty) msg += ` / 수량: ${buyableQty}주`;
+      msg += '\n';
+    }
+    if (sw.target_price) {
+      const grossRate = sw.entry_price ? Math.round(((sw.target_price - sw.entry_price) / sw.entry_price) * 1000) / 10 : null;
+      const netRate = grossRate ? Math.round((grossRate - 0.2) * 10) / 10 : null;
+      msg += `목표가: ${sw.target_price.toLocaleString()}원${grossRate ? ` (+${grossRate}% / 실질 +${netRate}%)` : ''}\n`;
+    }
+    if (sw.stop_loss) {
+      const stopGross = sw.entry_price ? Math.round(((sw.entry_price - sw.stop_loss) / sw.entry_price) * 1000) / 10 : null;
+      const stopNet = stopGross ? Math.round((stopGross + 0.2) * 10) / 10 : null;
+      msg += `손절가: ${sw.stop_loss.toLocaleString()}원${stopGross ? ` (-${stopGross}% / 실질 -${stopNet}%)` : ''}\n`;
+    }
+    msg += `트레일링 스탑: 고점 -7%\n`;
+    if (analysis.why_switch) msg += `갈아타기 근거: ${analysis.why_switch.slice(0,150)}\n`;
+    if (sw.expected_upside) msg += `예상수익률: ${sw.expected_upside}\n`;
+    msg += `───────────────\n👉 ${SERVER_URL}`;
+    return sendMessage(msg, sw.name, `switch_${holding.stock_code || holding.stock_name}`, true);
+  }
+
+  // 기존 알림 포맷 (갈아타기 아닌 경우)
   let headerIcon, label;
   if (isProfit)       { headerIcon = '💰'; label = '[익절] 전량매도 권고'; }
   else if (isLoss)    { headerIcon = '📉'; label = '[손절] 전량매도 권고'; }
-  else if (isSwitch)  { headerIcon = '🔄'; label = '[갈아타기] 종목 교체 권고'; }
   else if (isSell)    { headerIcon = '🔴'; label = '[긴급] 전량매도 권고'; }
   else if (isHold)    { headerIcon = '💡'; label = `[분석] ${action}`; }
   else                { headerIcon = '📊'; label = `[분석] ${action}`; }

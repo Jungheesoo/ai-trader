@@ -202,6 +202,18 @@ async function getCurrentPrice(stockCode) {
   });
 }
 
+async function getCurrentPrices(stockCodes) {
+  const result = {};
+  for (const code of stockCodes) {
+    try {
+      const data = await getCurrentPrice(code);
+      if (data?.price) result[code] = data.price;
+      await new Promise(r => setTimeout(r, 200));
+    } catch (e) { /* silent */ }
+  }
+  return result;
+}
+
 async function getDailyChart(stockCode, days = 60) {
   return requestWithRetry(async () => {
     const token = await getToken();
@@ -610,6 +622,7 @@ function isKisDown() {
 
 module.exports = {
   getCurrentPrice,
+  getCurrentPrices,
   getDailyChart,
   getInvestorData,
   getFullStockData,

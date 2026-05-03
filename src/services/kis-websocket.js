@@ -204,6 +204,12 @@ function isConnected() {
   return ws !== null && ws.readyState === WebSocket.OPEN;
 }
 
+function getCurrentPrice(stockCode) {
+  const ticks = tickData[stockCode];
+  if (!ticks || ticks.length === 0) return null;
+  return ticks[ticks.length - 1].price;
+}
+
 function getStrength(stockCode, minutes = 3) {
   const ticks = tickData[stockCode];
   if (!ticks || ticks.length === 0) return null;
@@ -235,27 +241,81 @@ async function checkAlerts(holdings) {
   for (const h of holdings) {
     if (!h.stock_code) continue;
     const code = h.stock_code;
-    const change5min = get5MinChange(code);
     const ticks = tickData[code];
     const latestPrice = ticks && ticks.length > 0 ? ticks[ticks.length - 1].price : null;
     if (!latestPrice) continue;
 
-    const shortTarget = h.avg_price ? Math.round(h.avg_price * 1.05) : null;
+    const change5min = get5MinChange(code);
+    const strength3 = getStrength(code, 3);
+    const strength10 = getStrength(code, 10);
+    const buyWall = getBuyWall(code);
+    const sellWall = getSellWall(code);
+    const wallRatio = (buyWall != null && sellWall != null && sellWall > 0)
+      ? Math.round((buyWall / sellWall) * 100) / 100
+      : null;
+
+    const shortTarget = h.target_price || null;
     const trailingStop = h.trailingStop || null;
 
-    try {
-      const { sendTelegram } = require('./telegram');
+    // 긴급 트리거 판단
+    let trigger = null;
+    if (change5min !== null && change5min <= -3) {
+      trigger = `5분 급락 ${change5min}%`;
+    } else if (shortTarget && latestPrice >= shortTarget) {
+      trigger = `목표가 도달 ${latestPrice.toLocaleString()}원`;
+    } else if (trailingStop && latestPrice <= trailingStop) {
+      trigger = `트레일링 스탑 도달`;
+    }
 
-      if (change5min !== null && change5min <= -3) {
-        await sendTelegram(`⚠️ [${h.stock_name}] 5분 급락 ${change5min}%!\n현재가: ${latestPrice.toLocaleString()}원\n즉시 확인 필요`, h.stock_name, `ws_급락_${code}`, true);
+    if (!trigger) continue;
+
+    // 실시간 데이터 포함 Sonnet 호출
+    try {
+      const { callSonnet } = require('./claude-sonnet');
+      const { calcRealPnL } = require('./portfolio');
+      const { sendTelegram } = require('./telegram');
+      const SERVER_URL = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
+
+      const real = calcRealPnL(h.avg_price, latestPrice, h.quantity);
+
+      const realtimeSection = `
+─ 실시간 데이터 ─
+체결강도(3분): ${strength3 ?? '데이터없음'} (100 기준, 높을수록 매수세)
+체결강도(10분): ${strength10 ?? '데이터없음'}
+5분 가격변화: ${change5min ?? '데이터없음'}%
+매수벽: ${buyWall != null ? buyWall.toLocaleString() + '주' : '데이터없음'}
+매도벽: ${sellWall != null ? sellWall.toLocaleString() + '주' : '데이터없음'}
+매수/매도벽 비율: ${wallRatio ?? '데이터없음'} (1.5이상=매수세우위 / 0.7이하=매도세우위)`;
+
+      const prompt = `[긴급 판단 요청] ${trigger}
+종목: ${h.stock_name}(${h.stock_code})
+현재가: ${latestPrice.toLocaleString()}원
+평단가: ${h.avg_price?.toLocaleString()}원 / 보유: ${h.quantity}주
+실질손익: ${real.realPnL >= 0 ? '+' : ''}${real.realPnL.toLocaleString()}원 (${real.realPnLRate}%)
+예상제세금: ${real.sellTax.toLocaleString()}원
+${realtimeSection}
+
+지금 즉시 매도해야 하나? sell_all 또는 hold로 판단. 수치 근거 필수.`;
+
+      const result = await callSonnet(prompt, 'alert');
+      if (result) {
+        const kst = new Date(Date.now() + 9 * 3600 * 1000);
+        const days = ['일','월','화','수','목','금','토'];
+        const timeStr = `${String(kst.getUTCHours()).padStart(2,'0')}:${String(kst.getUTCMinutes()).padStart(2,'0')}`;
+
+        let msg = `⚡ [긴급 알림] ${timeStr}\n`;
+        msg += `${trigger}\n`;
+        msg += `${h.stock_name} ${latestPrice.toLocaleString()}원\n`;
+        msg += `실질손익: ${real.realPnL >= 0 ? '+' : ''}${real.realPnL.toLocaleString()}원 (${real.realPnLRate}%)\n\n`;
+        msg += `AI 판단: ${result.action} [${result.confidence}]\n`;
+        msg += `${(result.reason || '').slice(0, 150)}\n`;
+        msg += `───────────────\n👉 ${SERVER_URL}`;
+
+        await sendTelegram(msg, h.stock_name, `alert_${code}_${Date.now()}`, true);
       }
-      if (shortTarget && latestPrice >= shortTarget) {
-        await sendTelegram(`🎯 [${h.stock_name}] 목표가 도달!\n현재가: ${latestPrice.toLocaleString()}원 (목표가 ${shortTarget.toLocaleString()}원)\n익절 타이밍`, h.stock_name, `ws_목표가_${code}`, true);
-      }
-      if (trailingStop && latestPrice <= trailingStop) {
-        await sendTelegram(`⚡ [${h.stock_name}] 트레일링 스탑 도달!\n현재가: ${latestPrice.toLocaleString()}원 (스탑 ${trailingStop.toLocaleString()}원)\n확인 필요`, h.stock_name, `ws_트레일링_${code}`, true);
-      }
-    } catch (e) { /* 알림 실패 무시 */ }
+    } catch (e) {
+      console.error('[checkAlerts] 오류:', e.message);
+    }
   }
 }
 
@@ -263,6 +323,7 @@ module.exports = {
   connect,
   disconnect,
   isConnected,
+  getCurrentPrice,
   getStrength,
   getBuyWall,
   getSellWall,

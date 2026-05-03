@@ -1,6 +1,5 @@
 const { getDb } = require('../db/database');
 const { callSonnet } = require('../services/claude-sonnet');
-const { sendKakao } = require('../services/kakao');
 const { sendTelegram } = require('../services/telegram');
 const { isWeekday } = require('../services/holiday');
 const { getPortfolioSummary, getMinutesUntilClose } = require('../services/portfolio');
@@ -50,16 +49,47 @@ async function runMorningReport() {
 
     const [sox, exRate] = await Promise.all([fetchSoxData(), fetchExchangeRate()]);
 
+    // REST API로 watchlist 진입가 보정 (스캔 시점 vs 실제 가격 괴리 방지)
+    const { getCurrentPrices } = require('../services/kis');
+    const allCodes = [
+      ...portfolio.holdings.map(h => h.stock_code).filter(Boolean),
+      ...watchlist.map(w => w.stock_code).filter(Boolean)
+    ];
+    const restPrices = allCodes.length > 0 ? await getCurrentPrices(allCodes) : {};
+    watchlist.forEach(w => {
+      if (restPrices[w.stock_code]) {
+        w.current_price = restPrices[w.stock_code];
+        w.priceLabel = '(REST)';
+      } else {
+        w.priceLabel = '(스캔기준⚠️)';
+      }
+    });
+
     const prompt = buildMorningPrompt(portfolio, watchlist, relevantNews, isFriday, isMonday, dartDisclosures, sox, exRate);
     const result = await callSonnet(prompt, 'morning_report');
 
     if (!result) {
-      await sendKakao('⚠️ 모닝 리포트 AI 분석 실패. 데이터 직접 확인 필요.\n👉 http://' + (process.env.SERVER_IP || 'localhost') + ':' + (process.env.PORT || 3000));
+      await sendTelegram('⚠️ 모닝 리포트 AI 분석 실패. 데이터 직접 확인 필요.\n👉 http://' + (process.env.SERVER_IP || 'localhost') + ':' + (process.env.PORT || 3000));
       return;
     }
 
+    // morning_strategy DB 저장
+    try {
+      db.prepare(
+        'INSERT OR REPLACE INTO morning_strategy (date, strategy, watch_stocks, switch_candidate, created_at) VALUES (?, ?, ?, ?, ?)'
+      ).run(
+        today,
+        result.reason || '',
+        JSON.stringify(watchlist.slice(0, 3).map(w => w.stock_name)),
+        result.switch_stock?.name || null,
+        new Date().toISOString()
+      );
+    } catch (e) {
+      console.warn('[Report] morning_strategy 저장 실패:', e.message);
+    }
+
     const message = formatMorningReport(portfolio, watchlist, result, isFriday, isMonday, relevantNews, dartDisclosures);
-    await sendKakao(message);
+    await sendTelegram(message);
 
     if (portfolio.holdings.length > 0) {
       db.prepare(
@@ -173,10 +203,12 @@ function buildMorningPrompt(portfolio, watchlist, news, isFriday, isMonday, dart
 }
 
 function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relevantNews, dartDisclosures = []) {
-  const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const days = ['일','월','화','수','목','금','토'];
+  const dateHeader = `${String(kst.getUTCMonth()+1).padStart(2,'0')}/${String(kst.getUTCDate()).padStart(2,'0')} (${days[kst.getUTCDay()]}) 08:30`;
   const serverUrl = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
 
-  let msg = `📊 AI 트레이더 모닝 리포트 ${today}\n\n`;
+  let msg = `📊 [모닝 리포트] ${dateHeader}\n\n`;
 
   // 총 자산
   const pnl = portfolio.unrealizedPnL || 0;
@@ -250,8 +282,23 @@ function formatMorningReport(portfolio, watchlist, ai, isFriday, isMonday, relev
   if (watchlist && watchlist.length > 0) {
     msg += `━━━━━━━━━━━━━━\n🔍 오늘 주목 종목 TOP${Math.min(3, watchlist.length)}\n━━━━━━━━━━━━━━\n`;
     watchlist.slice(0, 3).forEach((w, i) => {
-      msg += `${i + 1}. ${w.stock_name} / RSI:${Math.round(w.rsi || 0)}\n`;
+      const scoreStr = w.score ? ` (${w.score}점)` : '';
+      msg += `${i + 1}. ${w.stock_name}${scoreStr} / RSI:${Math.round(w.rsi || 0)}\n`;
       if (w.reason) msg += `   이유: ${w.reason}\n`;
+    });
+    msg += '\n';
+  }
+
+  // 09:05 검토 후보
+  if (watchlist && watchlist.length > 0) {
+    const top3 = watchlist.slice(0, 3);
+    const availCash = (portfolio.cash || 0) + (portfolio.newInvestment || 0);
+    msg += `━━━━━━━━━━━━━━\n⏰ 09:05 검토 후보\n━━━━━━━━━━━━━━\n`;
+    msg += `현금: ${availCash.toLocaleString()}원\n`;
+    msg += `상위 ${top3.length}종목 실시간 가격 조회 후 진입 여부 판단\n`;
+    top3.forEach((w, i) => {
+      const scoreStr = w.score ? ` (${w.score}점)` : '';
+      msg += `${i + 1}. ${w.stock_name}${scoreStr}\n`;
     });
     msg += '\n';
   }

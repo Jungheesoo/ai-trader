@@ -1,5 +1,5 @@
 const { callSonnet } = require('../services/claude-sonnet');
-const { sendKakao } = require('../services/kakao');
+const { sendTelegram } = require('../services/telegram');
 const { sendErrorAlert } = require('../services/alert');
 const { getPortfolioSummary } = require('../services/portfolio');
 
@@ -74,7 +74,7 @@ async function runFridayCheck() {
     if (result?.warning) msg += `${result.warning}\n`;
     msg += `\n👉 ${serverUrl}`;
 
-    await sendKakao(msg);
+    await sendTelegram(msg);
     console.log('[Friday] 금요일 특별 점검 발송 완료');
   } catch (err) {
     console.error('[Friday] 금요일 점검 오류:', err.message);

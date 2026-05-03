@@ -1,7 +1,7 @@
 'use strict';
 const { getDb } = require('../db/database');
 const { callSonnet } = require('../services/claude-sonnet');
-const { sendKakao } = require('../services/kakao');
+const { sendTelegram } = require('../services/telegram');
 const { sendErrorAlert } = require('../services/alert');
 
 // 이번 달 마지막 금요일 여부 판단
@@ -91,7 +91,7 @@ async function runMonthlyReport() {
     const aiResult = await callSonnet(sonnetPrompt, 'monthly_report');
 
     const msg = formatMonthlyReport(monthStr, totalCount, profitCount, profitTotal, lossCount, lossTotal, winRate, netPL, startAssets, endAssets, growthRate, bestTrade, worstTrade, accuracy, analyses.length, aiResult);
-    await sendKakao(msg);
+    await sendTelegram(msg);
 
     console.log('[Monthly] 월간 리포트 발송 완료');
   } catch (err) {

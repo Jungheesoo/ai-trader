@@ -5,6 +5,15 @@ const { getTodayKST } = require('./dateutil');
 const { getMarketStatus } = require('../utils/market');
 const { getBuyWall, getSellWall } = require('./kis-websocket');
 
+const SELL_TAX_RATE = parseFloat(process.env.STOCK_SELL_TAX_RATE) || 0.002;
+
+function calcRealPnL(avgPrice, sellPrice, quantity) {
+  const grossPnL = (sellPrice - avgPrice) * quantity;
+  const sellTax = Math.round(sellPrice * quantity * SELL_TAX_RATE);
+  const realPnL = grossPnL - sellTax;
+  const realPnLRate = Math.round((realPnL / (avgPrice * quantity)) * 10000) / 100;
+  return { realPnL, realPnLRate, grossPnL, sellTax };
+}
 
 function getToday() {
   return getTodayKST();
@@ -77,8 +86,10 @@ async function enrichHoldingsWithPrices(holdings) {
     }
 
     const currentPrice = stockData?.price || h.current_price || h.avg_price;
-    const profitLoss = (currentPrice - h.avg_price) * h.quantity;
-    const profitLossRate = ((currentPrice - h.avg_price) / h.avg_price) * 100;
+    const grossPnL = (currentPrice - h.avg_price) * h.quantity;
+    const estimatedTax = Math.round(currentPrice * h.quantity * SELL_TAX_RATE);
+    const profitLoss = grossPnL - estimatedTax;
+    const profitLossRate = Math.round((profitLoss / (h.avg_price * h.quantity)) * 10000) / 100;
 
     // KIS 호출 성공 시 현재가 DB 즉시 업데이트 (정규장 + 프리/애프터마켓 포함)
     if (shouldCallKIS && stockData?.price && h.stock_code) {
@@ -293,6 +304,7 @@ module.exports = {
   enrichHoldingsWithPrices,
   calcTotalAssets,
   calcOpportunityCost,
+  calcRealPnL,
   getMinutesUntilClose,
   isAfternoonCutoff,
   isOneHourBeforeClose,

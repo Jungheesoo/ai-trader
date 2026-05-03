@@ -57,6 +57,10 @@ async function runScan() {
       console.log(`[Scan] 거래량 순위 ${volumeRanks.value.length}종목 수집`);
     } else {
       console.warn('[Scan] 거래량 순위 API 실패 — 기본 목록으로 fallback');
+      await sendTelegram(
+        '⚠️ [Scan 경고] KIS 거래량 순위 API 실패\n등락률 순위만으로 스캔 진행\n종목 다양성 제한될 수 있음',
+        'system', 'scan_partial', false
+      ).catch(() => {});
     }
 
     if (changeRanks.status === 'rejected' || !changeRanks.value) {
@@ -68,24 +72,31 @@ async function runScan() {
       console.log(`[Scan] 등락률 순위 ${changeRanks.value.length}종목 수집`);
     }
 
-    // 순위 API 모두 실패 시 기본 핵심 종목으로 fallback
+    // 순위 API 모두 실패 시 추천 중단
     if (candidates.length === 0) {
-      console.warn('[Scan] 순위 API 실패 → 핵심 종목 fallback');
+      console.warn('[Scan] 순위 API 실패 → 추천 중단 (하드코딩 fallback 사용 안 함)');
       await sendTelegram(
-        '⚠️ [Scan 경고] KIS 순위 API 실패 → 기본 종목으로 대체\n영향: watchlist가 고정 종목으로만 구성됨\n조치: 수동으로 관심 종목 확인 권장',
-        'system', 'scan_fallback', false
+        '🚨 [Scan 실패] KIS 순위 API 실패\n오늘 종목 스캔 불가 — 현금 보유 유지\n09:05 종목 추천 없음\n조치: 수동으로 시장 확인 필요',
+        'system', 'scan_no_data', true
       );
-      candidates = [
-        { code: '005930', name: '삼성전자' }, { code: '000660', name: 'SK하이닉스' },
-        { code: '012450', name: '한화에어로스페이스' }, { code: '034020', name: '두산에너빌리티' },
-        { code: '329180', name: 'HD현대중공업' }, { code: '005380', name: '현대자동차' },
-        { code: '000270', name: '기아' }, { code: '105560', name: 'KB금융' },
-        { code: '055550', name: '신한지주' }, { code: '035420', name: 'NAVER' },
-        { code: '207940', name: '삼성바이오로직스' }, { code: '068270', name: '셀트리온' },
-        { code: '373220', name: 'LG에너지솔루션' }, { code: '079550', name: 'LIG넥스원' },
-        { code: '009540', name: 'HD한국조선해양' }
-      ];
+      return;
     }
+
+    // 새벽 뉴스에서 포착한 이벤트 종목 추가
+    try {
+      const dawnCandidates = db.prepare(
+        'SELECT DISTINCT stock_name FROM dawn_candidates WHERE date = ?'
+      ).all(today);
+
+      for (const dc of dawnCandidates) {
+        // 이미 candidates에 있으면 스킵
+        if (!candidates.find(c => c.name === dc.stock_name)) {
+          console.log(`[Scan] 새벽 뉴스 후보 추가: ${dc.stock_name}`);
+          // 종목명만 있고 코드는 없음 — 정밀 스캔 단계에서 코드 조회 시도
+          candidates.push({ name: dc.stock_name, code: null, source: 'dawn_news', changeRate: null });
+        }
+      }
+    } catch(e) { /* dawn_candidates 테이블 없으면 무시 */ }
 
     // 중복 제거 (코드 기준)
     const seen = new Set();
@@ -129,7 +140,8 @@ async function runScan() {
           if (fiveDayReturn >= 30) continue;  // 5일 +30% 급등 제외
         }
         if (volumeRatio && volumeRatio >= 50) continue; // 거래량 50배 세력 제외
-        if (currentPrice < 3000) continue;              // 3000원 미만 소액주 제외
+        if (currentPrice < 3000) continue;              // 동전주 제외
+        if (currentPrice < 10000 && volumeRatio < 2) continue; // 저가주는 거래량 확인 필수
 
         // 외인/기관 연속 매도 종목 제외 (수급 역풍 종목 차단)
         if (investor?.foreignConsecutiveDays <= -2) continue;
@@ -187,15 +199,25 @@ async function runScan() {
       }
     }
 
+    // results 비어있을 때 알림
+    if (results.length === 0) {
+      console.warn('[Scan] 조건 충족 종목 없음 (score 5점 미만)');
+      await sendTelegram(
+        '⚠️ [Scan 경고] 조건 충족 종목 없음\n오늘 모든 후보 종목 score 5점 미만\n09:05 종목 추천 불가 — 현금 보유 유지',
+        'system', 'scan_no_qualify', false
+      ).catch(() => {});
+      return;
+    }
+
     // 상위 10개만 저장 — 품질 높은 종목만 Sonnet에 전달
     results.sort((a, b) => b.score - a.score);
     const top10 = results.slice(0, 10);
 
     const stmt = db.prepare(
-      'INSERT INTO watchlist (date, stock_name, stock_code, rsi, macd, volume_ratio, foreign_net, institution_net, current_price, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO watchlist (date, stock_name, stock_code, rsi, macd, volume_ratio, foreign_net, institution_net, current_price, reason, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     for (const r of top10) {
-      stmt.run(today, r.stock_name, r.stock_code, r.rsi, r.macd, r.volume_ratio, r.foreign_net, r.institution_net, r.current_price, r.reason);
+      stmt.run(today, r.stock_name, r.stock_code, r.rsi, r.macd, r.volume_ratio, r.foreign_net, r.institution_net, r.current_price, r.reason, r.score);
     }
 
     console.log(`[Scan] 완료. 후보 ${candidates.length}종목 → 상위 ${top10.length}종목 저장.`);

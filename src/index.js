@@ -14,6 +14,7 @@ const { router: streamRoute } = require('./routes/stream');
 const { runMorningLink } = require('./scheduler/morning');
 const { runScan } = require('./scheduler/scan');
 const { runMorningReport } = require('./scheduler/report');
+const { runStockRecommendation } = require('./scheduler/recommendation');
 const { runMonitor } = require('./scheduler/monitor');
 const { runFridayCheck } = require('./scheduler/friday');
 const { runMondayCheck } = require('./scheduler/monday');
@@ -97,6 +98,65 @@ cron.schedule('0 2 * * *', async () => {
   await runNightMonitor();
 }, { timezone: 'Asia/Seoul' });
 
+// 새벽 뉴스 수집 (1시간마다, 장외 시간 00:00~08:00) — Haiku만 사용
+cron.schedule('0 0,1,2,3,4,5,6,7 * * 1-5', async () => {
+  const { isHoliday } = require('./services/holiday');
+  if (isHoliday(new Date())) return;
+
+  try {
+    const { fetchAllRSS } = require('./services/rss');
+    const { filterNewsBatch } = require('./services/claude-haiku');
+    const { getDb } = require('./db/database');
+    const { getTodayKST } = require('./services/dateutil');
+
+    const db = getDb();
+    const today = getTodayKST();
+
+    // RSS 수집
+    const allNews = await fetchAllRSS();
+    if (!allNews || allNews.length === 0) return;
+
+    // 기존 캐시 URL 로드
+    const cachedUrls = new Set(
+      db.prepare('SELECT url FROM news_cache WHERE date = ?').all(today).map(r => r.url)
+    );
+
+    // 새 뉴스만 필터링
+    const newNews = allNews.filter(n => n.url && !cachedUrls.has(n.url));
+    if (newNews.length === 0) return;
+
+    // DB 저장
+    const cacheStmt = db.prepare(
+      'INSERT OR IGNORE INTO news_cache (date, source, title, url, content) VALUES (?, ?, ?, ?, ?)'
+    );
+    for (const n of newNews) {
+      cacheStmt.run(today, n.source || '', n.title || '', n.url || '', n.content || '');
+    }
+
+    // Haiku로 필터링 (최대 20건, Sonnet 미호출)
+    const filtered = await filterNewsBatch(newNews.slice(0, 20), [], []);
+    const candidates = [...new Set(
+      filtered.flatMap(n => n.candidate_stocks || []).filter(Boolean)
+    )];
+
+    if (candidates.length > 0) {
+      console.log(`[새벽뉴스] 이벤트 후보 종목 포착: ${candidates.join(', ')}`);
+      // dawn_candidates 테이블에 저장 (scan.js에서 활용)
+      try {
+        db.prepare('CREATE TABLE IF NOT EXISTS dawn_candidates (date TEXT, stock_name TEXT, reason TEXT, created_at TEXT)').run();
+        const dawnStmt = db.prepare('INSERT OR IGNORE INTO dawn_candidates (date, stock_name, reason, created_at) VALUES (?, ?, ?, ?)');
+        for (const c of candidates) {
+          dawnStmt.run(today, c, '새벽 뉴스 포착', new Date().toISOString());
+        }
+      } catch(e) { /* silent */ }
+    }
+
+    console.log(`[새벽뉴스] 수집 완료: ${newNews.length}건 → 후보 ${candidates.length}종목`);
+  } catch(e) {
+    console.warn('[새벽뉴스] 수집 실패:', e.message);
+  }
+}, { timezone: 'Asia/Seoul' });
+
 // 일요일 오전 10:00 - 주간 성과 리포트
 cron.schedule('0 10 * * 0', async () => {
   await runWeeklyReport();
@@ -125,13 +185,13 @@ cron.schedule('0 3 * * *', async () => {
     const { execSync } = require('child_process');
     try { execSync('pm2 flush', { timeout: 10000 }); } catch (e) { /* silent */ }
 
-    const { sendKakao } = require('./services/kakao');
+    const { sendTelegram } = require('./services/telegram');
     const { statSync } = require('fs');
     const dbPath = require('path').resolve(__dirname, '../data/trading.db');
     let dbSize = '-';
     try { dbSize = Math.round(statSync(dbPath).size / 1024 / 1024) + 'MB'; } catch (e) { /* silent */ }
 
-    await sendKakao(
+    await sendTelegram(
       `[자동정리] DB 정리 완료\n뉴스 ${newsDeleted}건 / 알림 ${alertsDeleted}건 / 분석 ${analysisDeleted}건 / 보유 ${holdingsDeleted}건 / 워치리스트 ${watchlistDeleted}건 삭제\nDB 크기: ${dbSize}`,
       '', 'cleanup'
     );
@@ -141,18 +201,14 @@ cron.schedule('0 3 * * *', async () => {
   }
 }, { timezone: 'Asia/Seoul' });
 
-// 평일 08:50 - 장 시작 전 WS 상태 점검
+// 평일 08:50 - 장 시작 전 WS 사전 연결 시도 (조용히, 알림 없음)
 cron.schedule('50 8 * * 1-5', async () => {
   const { isHoliday } = require('./services/holiday');
   if (isHoliday(new Date())) return;
   const { isConnected, connect } = require('./services/kis-websocket');
-  const { sendTelegram } = require('./services/telegram');
   if (!isConnected()) {
-    await sendTelegram(
-      '⚠️ [08:50 점검] WS 미연결 상태\n장 시작 전 재연결 시도 중...',
-      'system', 'ws_check_0850', false
-    );
-    await connect();
+    console.log('[점검] 08:50 WS 사전 연결 시도');
+    await connect().catch(() => {});
   } else {
     console.log('[점검] 08:50 WS 정상 연결 확인');
   }
@@ -165,6 +221,13 @@ cron.schedule('0 9 * * 1-5', async () => {
     const codes = holdings.map(h => h.stock_code).filter(Boolean);
     await kisWs.connect(codes);
   } catch (e) { console.error('[WS] 연결 실패:', e.message); }
+}, { timezone: 'Asia/Seoul' });
+
+// 평일 09:05 - 종목 추천
+cron.schedule('5 9 * * 1-5', async () => {
+  const { isHoliday } = require('./services/holiday');
+  if (isHoliday(new Date())) return;
+  await runStockRecommendation();
 }, { timezone: 'Asia/Seoul' });
 
 // WebSocket: 장 마감(15:35)에 연결 해제
