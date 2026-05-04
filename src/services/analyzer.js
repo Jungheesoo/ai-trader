@@ -465,6 +465,14 @@ async function runAnalysisPipeline(portfolioSummary) {
     const { sendTelegram } = require('./telegram');
     const SERVER_URL = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}`;
     for (const n of urgentNews.slice(0, 3)) {
+      const titleKey = (n.title || n.news?.title || '').slice(0, 50);
+      const alreadySent = db.prepare(
+        'SELECT id FROM alerts WHERE date = ? AND alert_type = ? AND message LIKE ?'
+      ).get(today, 'urgent_news', '%' + titleKey + '%');
+      if (alreadySent) {
+        console.log('[Pipeline] 중복 뉴스 스킵:', titleKey);
+        continue;
+      }
       const msg = `⚠️ [긴급 뉴스 감지]\n${n.title || n.news?.title || ''}\n\n영향: ${n.impact || '확인 필요'}\n\n👉 ${SERVER_URL}`;
       await sendTelegram(msg, n.stockName || '', 'urgent_news', false);
     }

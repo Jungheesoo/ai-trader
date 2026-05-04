@@ -53,19 +53,34 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ ok: false, error: '잘못된 요청입니다.' });
     }
 
-    // 종목 약어 변환 및 검증
-    const resolved = holdings.map(h => {
+    // 종목 약어 변환 및 검증 (stock_code 없으면 자동 검색)
+    const { searchStockCode } = require('../services/kis');
+    const resolved = [];
+    for (const h of holdings) {
       const alias = resolveAlias(h.stock_name);
-      return {
-        stock_name: alias.name,
-        stock_code: h.stock_code || alias.code,
+      let code = h.stock_code || alias.code || '';
+      const name = alias.name || h.stock_name;
+
+      // stock_code 없으면 KIS API로 자동 검색
+      if (!code) {
+        const searchResult = await searchStockCode(name);
+        if (searchResult && searchResult.code) {
+          code = searchResult.code;
+          console.log(`[Portfolio] 종목코드 자동 보완: ${name} → ${code}`);
+        }
+      }
+
+      resolved.push({
+        stock_name: name,
+        stock_code: code,
         quantity: parseInt(h.quantity) || 0,
         avg_price: parseFloat(h.avg_price) || 0
-      };
-    }).filter(h => h.quantity > 0 && h.avg_price > 0);
+      });
+    }
 
-    if (resolved.length > 0) {
-      saveHoldings(today, resolved);
+    const validHoldings = resolved.filter(h => h.quantity > 0 && h.avg_price > 0);
+    if (validHoldings.length > 0) {
+      saveHoldings(today, validHoldings);
     }
     savePortfolioInput(today, parseFloat(cash) || 0, parseFloat(newInvestment) || 0);
 
@@ -106,6 +121,25 @@ router.get('/holdings', (req, res) => {
 // GET /api/portfolio/aliases - 종목 약어 사전 반환
 router.get('/aliases', (req, res) => {
   res.json({ ok: true, data: STOCK_ALIASES });
+});
+
+// GET /api/portfolio/search-code - 종목명으로 종목코드 검색
+router.get('/search-code', async (req, res) => {
+  try {
+    const { name } = req.query;
+    if (!name) {
+      return res.status(400).json({ ok: false, error: '종목명(name) 파라미터 필수' });
+    }
+    const { searchStockCode } = require('../services/kis');
+    const result = await searchStockCode(name);
+    if (result && result.code) {
+      res.json({ ok: true, code: result.code, name: result.name });
+    } else {
+      res.json({ ok: false });
+    }
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // GET /api/portfolio/trades - 매매 이력 조회

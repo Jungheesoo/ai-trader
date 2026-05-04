@@ -14,7 +14,7 @@ const { router: streamRoute } = require('./routes/stream');
 const { runMorningLink } = require('./scheduler/morning');
 const { runScan } = require('./scheduler/scan');
 const { runMorningReport } = require('./scheduler/report');
-const { runStockRecommendation } = require('./scheduler/recommendation');
+const { runStockRecommendation, runMidDayRecommendation } = require('./scheduler/recommendation');
 const { runMonitor } = require('./scheduler/monitor');
 const { runFridayCheck } = require('./scheduler/friday');
 const { runMondayCheck } = require('./scheduler/monday');
@@ -49,10 +49,9 @@ app.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }
 
 // ─── 스케줄러 ───────────────────────────────────────────
 
-// 평일 오전 8:00 - 웹 UI 링크 발송 + 전체 종목 스캔
+// 평일 오전 8:00 - 웹 UI 링크 발송만 (스캔 제거 - 장외라 실패함)
 cron.schedule('0 8 * * 1-5', async () => {
   await runMorningLink();
-  await runScan();
 }, { timezone: 'Asia/Seoul' });
 
 // 평일 오전 8:10 - 자산입력 마감 (미입력 시 전일 데이터 자동 사용 - portfolio.js getTodayHoldings가 처리)
@@ -63,25 +62,14 @@ cron.schedule('10 8 * * 1-5', async () => {
   console.log(`[AutoLoad] 8:10 자산입력 마감 체크. 보유종목 ${holdings.length}건 (전일 자동포함)`);
 }, { timezone: 'Asia/Seoul' });
 
-// 평일 오전 8:30 - 모닝 리포트
-cron.schedule('30 8 * * 1-5', async () => {
-  await runMorningReport();
+// 평일 09:01 - 전체 종목 스캔 (장 시작 직후 실행)
+cron.schedule('1 9 * * 1-5', async () => {
+  await runScan();
 }, { timezone: 'Asia/Seoul' });
 
-// 평일 09:01 - 스캔 재시도 (08:00 실패 시만)
-cron.schedule('1 9 * * 1-5', async () => {
-  if (!isWeekday(new Date())) return;
-  const db = require('./db/database').getDb();
-  const { getTodayKST } = require('./services/dateutil');
-  const today = getTodayKST();
-  const count = db.prepare('SELECT COUNT(*) as cnt FROM watchlist WHERE date = ?').get(today).cnt;
-
-  if (count === 0) {
-    console.log('[Scan] 08:00 스캔 실패 감지 → 09:01 재실행');
-    await runScan();
-  } else {
-    console.log(`[Scan] 08:00 스캔 성공 (${count}종목) → 09:01 재실행 스킵`);
-  }
+// 평일 오전 9:03 - 모닝 리포트 (스캔 후 실행)
+cron.schedule('3 9 * * 1-5', async () => {
+  await runMorningReport();
 }, { timezone: 'Asia/Seoul' });
 
 // 평일 장 중 30분마다 (9:00~15:30)
@@ -246,6 +234,16 @@ cron.schedule('5 9 * * 1-5', async () => {
   await runStockRecommendation();
 }, { timezone: 'Asia/Seoul' });
 
+// 평일 11:00 - 장중 재추천
+cron.schedule('0 11 * * 1-5', async () => {
+  await runMidDayRecommendation();
+}, { timezone: 'Asia/Seoul' });
+
+// 평일 13:00 - 장중 재추천
+cron.schedule('0 13 * * 1-5', async () => {
+  await runMidDayRecommendation();
+}, { timezone: 'Asia/Seoul' });
+
 // WebSocket: 장 마감(15:35)에 연결 해제
 cron.schedule('35 15 * * 1-5', () => {
   kisWs.disconnect();
@@ -268,6 +266,28 @@ async function start() {
     }
     if (!process.env.SERVER_IP || process.env.SERVER_IP.includes('여기에')) {
       console.warn('[Config] ⚠️  SERVER_IP 미설정 - 링크가 localhost로 표시됩니다.');
+    }
+
+    // stock_code null인 기존 holdings 자동 보정
+    try {
+      const { getDb } = require('./db/database');
+      const { searchStockCode } = require('./services/kis');
+      const db = getDb();
+      const nullCodeHoldings = db.prepare('SELECT DISTINCT stock_name FROM holdings WHERE stock_code IS NULL OR stock_code = ""').all();
+      if (nullCodeHoldings.length > 0) {
+        console.log(`[AutoFix] stock_code 누락 종목 ${nullCodeHoldings.length}건 자동 보정 시작`);
+        for (const h of nullCodeHoldings) {
+          const result = await searchStockCode(h.stock_name);
+          if (result && result.code) {
+            db.prepare('UPDATE holdings SET stock_code = ? WHERE stock_name = ? AND (stock_code IS NULL OR stock_code = "")').run(result.code, h.stock_name);
+            console.log(`[AutoFix] ${h.stock_name} → ${result.code} 보정 완료`);
+          } else {
+            console.warn(`[AutoFix] ${h.stock_name} 종목코드 검색 실패`);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[AutoFix] stock_code 자동 보정 실패:', e.message);
     }
 
     app.listen(PORT, '0.0.0.0', () => {

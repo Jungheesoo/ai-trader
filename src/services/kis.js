@@ -620,6 +620,49 @@ function isKisDown() {
   return kisRecoveryAt !== null && Date.now() < kisRecoveryAt;
 }
 
+async function searchStockCode(stockName) {
+  try {
+    const token = await getToken();
+    if (!token) {
+      console.warn('[KIS] 토큰 없음 → 종목 검색 실패');
+      return null;
+    }
+    await delay(400);
+    const res = await axios.get(`${BASE_URL}/uapi/domestic-stock/v1/quotations/search-stock-info`, {
+      params: {
+        PRDT_TYPE_CD: '300',
+        PDNO: stockName
+      },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        appkey: process.env.KIS_APP_KEY,
+        appsecret: process.env.KIS_APP_SECRET,
+        tr_id: 'CTPF1002R',
+        custtype: 'P'
+      },
+      timeout: 10000
+    });
+    const output = res.data.output;
+    if (!output || !output.length) {
+      console.log(`[KIS] 종목 검색 결과 없음: ${stockName}`);
+      return null;
+    }
+    // 첫 번째 결과 반환
+    const first = output[0];
+    const code = first.pdno || first.prdt_shtn_cd || first.short_code;
+    const name = first.prdt_name || first.prdt_abrv_name;
+    if (!code) {
+      console.warn(`[KIS] 종목코드 없음: ${stockName}`);
+      return null;
+    }
+    console.log(`[KIS] 종목 검색 성공: ${name} (${code})`);
+    return { code, name };
+  } catch (err) {
+    console.warn(`[KIS] 종목 검색 실패 (${stockName}):`, err.message);
+    return null;
+  }
+}
+
 module.exports = {
   getCurrentPrice,
   getCurrentPrices,
@@ -633,5 +676,6 @@ module.exports = {
   calculateTrailingStop,
   isKisDown,
   getVolumeRankStocks,
-  getChangeRankStocks
+  getChangeRankStocks,
+  searchStockCode
 };

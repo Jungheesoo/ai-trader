@@ -30,7 +30,7 @@ function toKSTDateString(date) {
 }
 
 function isHoliday(date) {
-  const d = date instanceof Date ? date : new Date(date);
+  const d = (date instanceof Date) ? date : new Date(date != null ? date : Date.now());
   const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
   const dayOfWeek = kst.getUTCDay();
   if (dayOfWeek === 0 || dayOfWeek === 6) return true;
@@ -45,7 +45,7 @@ function isHoliday(date) {
 }
 
 function isMarketOpen(date) {
-  const d = date instanceof Date ? date : new Date(date);
+  const d = (date instanceof Date) ? date : new Date(date != null ? date : Date.now());
   if (isHoliday(d)) return false;
   const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
   const totalMinutes = kst.getUTCHours() * 60 + kst.getUTCMinutes();
